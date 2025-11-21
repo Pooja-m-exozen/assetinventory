@@ -164,7 +164,7 @@ export default function Sidebar() {
   ];
 
   const downloadMenuItem = [
-    { href: "/dashboard/download", label: "Download Assettiger App", icon: Download, externalUrl: "https://play.google.com/store/apps/details?id=com.assettiger.app" },
+    { href: "/dashboard/download", label: "Download AssetExozen App", icon: Download, externalUrl: "https://play.google.com/store/apps/details?id=com.assettiger.app" },
   ];
 
   const isActive = (href: string) => {

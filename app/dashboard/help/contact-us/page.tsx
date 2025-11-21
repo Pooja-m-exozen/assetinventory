@@ -1,130 +1,107 @@
 "use client";
 
 import { Phone, MapPin, Mail, Settings } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
 
 export default function ContactUsPage() {
   return (
-    <div className="p-6 space-y-6">
+    <div className="container-fluid p-4" style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif', backgroundColor: '#F5F5F5', minHeight: '100vh' }}>
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <Phone className="h-6 w-6 text-orange-500" />
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-50" style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}>
+      <div className="d-flex align-items-center mb-4">
+        <Phone className="me-2" style={{ color: '#DC2626', width: '24px', height: '24px' }} />
+        <h1 className="mb-0 fw-bold" style={{ fontSize: '20px', color: '#000' }}>
           Contact Us
         </h1>
       </div>
 
-      {/* Main Content */}
-      <div className="space-y-6">
-        {/* Technical Support Section */}
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-start gap-4">
-              <div className="p-3 bg-orange-100 dark:bg-orange-900/20 rounded-lg">
-                <Settings className="h-6 w-6 text-orange-500" />
-              </div>
-              <div className="flex-1">
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-50 mb-2" style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}>
-                  Technical Support
-                </h2>
-                <p className="text-base text-gray-700 dark:text-gray-300 leading-relaxed" style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}>
-                  We love hearing from our customers. If you have any questions about AssetTiger, please call or email us. Please include your AssetTiger account number-it lets us resolve your request faster and more accurately.
+      {/* Technical Support Section */}
+      <div className="card mb-4" style={{ border: '1px solid #FFFFFF', borderRadius: '0', boxShadow: 'none' }}>
+        <div className="card-body p-4" style={{ backgroundColor: '#FFFFFF' }}>
+          <div className="d-flex align-items-start">
+            <Settings className="me-3" style={{ color: '#FFD700', width: '24px', height: '24px', flexShrink: 0, marginTop: '2px' }} />
+            <div className="flex-1">
+              <h2 className="mb-2 fw-bold" style={{ fontSize: '16px', color: '#000', marginBottom: '8px' }}>
+                Technical Support
+              </h2>
+              <p style={{ fontSize: '13px', lineHeight: '1.6', color: '#000', marginBottom: '0' }}>
+                We love hearing from our customers. If you have any questions about AssetExozen, please call or email us. Please include your AssetExozen account number-it lets us resolve your request faster and more accurately.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Contact Information Cards */}
+      <div className="row g-3 mb-4">
+        {/* Address Card */}
+        <div className="col-md-4">
+          <div className="card h-100" style={{ border: '1px solid #FFFFFF', borderRadius: '0', boxShadow: 'none' }}>
+            <div className="card-body text-center" style={{ padding: '24px', backgroundColor: '#FFFFFF' }}>
+              <MapPin className="mb-3" style={{ color: '#FFD700', width: '32px', height: '32px', margin: '0 auto 12px' }} />
+              <h3 className="mb-2 fw-bold" style={{ fontSize: '14px', color: '#000', marginBottom: '8px' }}>
+                Address
+              </h3>
+              <p style={{ fontSize: '13px', lineHeight: '1.6', color: '#000', marginBottom: '0' }}>
+                25/1, 4th Floor, SKIP House, Museum Rd,<br />
+                near Brigade Tower, Shanthala Nagar,<br />
+                Ashok Nagar, Bengaluru, Karnataka 560025
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Contact Support Card */}
+        <div className="col-md-4">
+          <div className="card h-100" style={{ border: '1px solid #FFFFFF', borderRadius: '0', boxShadow: 'none' }}>
+            <div className="card-body text-center" style={{ padding: '24px', backgroundColor: '#FFFFFF' }}>
+              <Phone className="mb-3" style={{ color: '#FFD700', width: '32px', height: '32px', margin: '0 auto 12px' }} />
+              <h3 className="mb-2 fw-bold" style={{ fontSize: '14px', color: '#000', marginBottom: '8px' }}>
+                Contact Support
+              </h3>
+              <div style={{ fontSize: '13px', lineHeight: '1.6' }}>
+                <p style={{ marginBottom: '4px' }}>
+                  <a href="tel:08041651888" style={{ color: '#0066FF', textDecoration: 'none' }}>
+                    080 4165 1888
+                  </a>
                 </p>
               </div>
             </div>
-          </CardContent>
-        </Card>
-
-        {/* Contact Information Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Address Card */}
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex flex-col items-center text-center space-y-4">
-                <div className="p-3 bg-blue-100 dark:bg-blue-900/20 rounded-lg">
-                  <MapPin className="h-6 w-6 text-blue-500" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-50 mb-2" style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}>
-                    Address
-                  </h3>
-                  <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed" style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}>
-                    203 Jay St, Suite 800,<br />
-                    Brooklyn, NY 11201, USA
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Contact Support Card */}
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex flex-col items-center text-center space-y-4">
-                <div className="p-3 bg-green-100 dark:bg-green-900/20 rounded-lg">
-                  <Phone className="h-6 w-6 text-green-500" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-50 mb-2" style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}>
-                    Contact Support
-                  </h3>
-                  <div className="space-y-1">
-                    <p className="text-sm text-gray-600 dark:text-gray-400" style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}>
-                      <a href="tel:+18882907750" className="hover:text-orange-500 transition-colors">
-                        +1 888-290-7750
-                      </a>
-                    </p>
-                    <p className="text-sm text-gray-600 dark:text-gray-400" style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}>
-                      <a href="tel:+17187971900" className="hover:text-orange-500 transition-colors">
-                        +1 718-797-1900
-                      </a>
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Email Card */}
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex flex-col items-center text-center space-y-4">
-                <div className="p-3 bg-purple-100 dark:bg-purple-900/20 rounded-lg">
-                  <Mail className="h-6 w-6 text-purple-500" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-50 mb-2" style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}>
-                    Email
-                  </h3>
-                  <p className="text-sm text-gray-600 dark:text-gray-400" style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}>
-                    <a href="mailto:info@assettiger.com" className="hover:text-orange-500 transition-colors break-all">
-                      info@assettiger.com
-                    </a>
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          </div>
         </div>
 
-        {/* Map Section */}
-        <Card>
-          <CardContent className="p-0">
-            <div className="relative w-full h-96 rounded-lg overflow-hidden">
-              <iframe
-                src="https://www.google.com/maps?q=203+Jay+St,+Suite+800,+Brooklyn,+NY+11201&output=embed"
-                width="100%"
-                height="100%"
-                style={{ border: 0 }}
-                allowFullScreen
-                loading="lazy"
-                referrerPolicy="no-referrer-when-downgrade"
-                className="w-full h-full"
-                title="AssetTiger Office Location"
-              />
+        {/* Email Card */}
+        <div className="col-md-4">
+          <div className="card h-100" style={{ border: '1px solid #FFFFFF', borderRadius: '0', boxShadow: 'none' }}>
+            <div className="card-body text-center" style={{ padding: '24px', backgroundColor: '#FFFFFF' }}>
+              <Mail className="mb-3" style={{ color: '#FFD700', width: '32px', height: '32px', margin: '0 auto 12px' }} />
+              <h3 className="mb-2 fw-bold" style={{ fontSize: '14px', color: '#000', marginBottom: '8px' }}>
+                Email
+              </h3>
+              <p style={{ fontSize: '13px', lineHeight: '1.6', color: '#000', marginBottom: '0' }}>
+                <a href="mailto:support@exozen.co.in" style={{ color: '#0066FF', textDecoration: 'none', wordBreak: 'break-all' }}>
+                  support@exozen.co.in
+                </a>
+              </p>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
+      </div>
+
+      {/* Map Section */}
+      <div className="card" style={{ border: '1px solid #FFFFFF', borderRadius: '0', boxShadow: 'none' }}>
+        <div className="card-body p-0">
+          <div className="w-100" style={{ height: '500px', position: 'relative' }}>
+            <iframe
+              src="https://www.google.com/maps?q=25/1,+4th+Floor,+SKIP+House,+Museum+Rd,+near+Brigade+Tower,+Shanthala+Nagar,+Ashok+Nagar,+Bengaluru,+Karnataka+560025&output=embed"
+              width="100%"
+              height="100%"
+              style={{ border: 0 }}
+              allowFullScreen
+              loading="lazy"
+              referrerPolicy="no-referrer-when-downgrade"
+              title="AssetExozen Office Location"
+            />
+          </div>
+        </div>
       </div>
     </div>
   );
