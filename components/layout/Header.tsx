@@ -6,16 +6,16 @@ import { cn } from "@/lib/utils";
 import {
   List,
   Plus,
-  Search,
-  Clock,
-  Tag,
   User,
   ChevronDown,
+  FileText,
 } from "lucide-react";
 
 export default function Header() {
   const pathname = usePathname();
-  const isAssetsActive = pathname?.startsWith("/dashboard/assets");
+  const isAssetsActive = pathname?.startsWith("/assets");
+  const isInventoryActive = pathname?.startsWith("/inventory");
+  const isListsActive = pathname?.startsWith("/lists");
   return (
     <header className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 px-6 py-3 h-16 flex items-center">
       <div className="flex items-center justify-between w-full">
@@ -24,7 +24,7 @@ export default function Header() {
           {/* Top Navigation Links */}
           <nav className="hidden md:flex items-center gap-1">
             <Link
-              href="/dashboard/assets"
+              href="/assets"
               className={cn(
                 "flex items-center gap-1.5 px-2 py-1.5 text-sm font-bold text-gray-900 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors",
                 isAssetsActive && "border-b-2 border-yellow-500"
@@ -35,7 +35,7 @@ export default function Header() {
               <span className="font-bold">Assets</span>
             </Link>
             <Link
-              href="/dashboard/assets/add"
+              href="/assets/add"
               className={cn(
                 "flex items-center gap-1.5 px-2 py-1.5 text-sm font-bold text-gray-900 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors"
               )}
@@ -45,9 +45,10 @@ export default function Header() {
               <span className="font-bold">Asset</span>
             </Link>
             <Link
-              href="/dashboard/inventory"
+              href="/inventory/list"
               className={cn(
-                "flex items-center gap-1.5 px-2 py-1.5 text-sm font-bold text-gray-900 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors"
+                "flex items-center gap-1.5 px-2 py-1.5 text-sm font-bold text-gray-900 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors",
+                isInventoryActive && "border-b-2 border-yellow-500"
               )}
               style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif', fontSize: '15px' }}
             >
@@ -55,7 +56,7 @@ export default function Header() {
               <span className="font-bold">Inventory</span>
             </Link>
             <Link
-              href="/dashboard/inventory/add"
+              href="/inventory/add"
               className={cn(
                 "flex items-center gap-1.5 px-2 py-1.5 text-sm font-bold text-gray-900 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors"
               )}
@@ -65,35 +66,15 @@ export default function Header() {
               <span className="font-bold">Inventory</span>
             </Link>
             <Link
-              href="/dashboard/search"
+              href="/lists/assets"
               className={cn(
-                "flex items-center gap-1.5 px-2 py-1.5 text-sm font-bold text-gray-900 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors"
+                "flex items-center gap-1.5 px-2 py-1.5 text-sm font-bold text-gray-900 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors",
+                isListsActive && "border-b-2 border-yellow-500"
               )}
               style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif', fontSize: '15px' }}
             >
-              <Search className="h-4 w-4 text-gray-900 dark:text-gray-300" />
-              <span className="font-bold">Search</span>
-            </Link>
-            <Link
-              href="/dashboard/changelog"
-              className={cn(
-                "flex items-center gap-1.5 px-2 py-1.5 text-sm font-bold text-gray-900 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors"
-              )}
-              style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif', fontSize: '15px' }}
-            >
-              <Clock className="h-4 w-4 text-gray-900 dark:text-gray-300" />
-              <span className="font-bold">Changelog</span>
-              <span className="ml-1 bg-red-500 text-white text-xs px-2 py-0.5 rounded font-bold" style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif', fontSize: '13px' }}>Sep 15</span>
-            </Link>
-            <Link
-              href="/dashboard/buy-tags"
-              className={cn(
-                "flex items-center gap-1.5 px-2 py-1.5 text-sm font-bold text-gray-900 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors"
-              )}
-              style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif', fontSize: '15px' }}
-            >
-              <Tag className="h-4 w-4 text-gray-900 dark:text-gray-300" />
-              <span className="font-bold">Buy Asset Tags</span>
+              <FileText className="h-4 w-4 text-gray-900 dark:text-gray-300" />
+              <span className="font-bold">Lists</span>
             </Link>
           </nav>
         </div>
