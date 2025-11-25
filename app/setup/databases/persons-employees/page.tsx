@@ -126,7 +126,7 @@ export default function PersonsEmployeesPage() {
             <div className="me-3" style={{ padding: '12px', backgroundColor: '#FFF5E6', borderRadius: '4px' }}>
               <User style={{ color: '#FF8C00', width: '24px', height: '24px' }} />
             </div>
-            <div className="flex-grow-1">
+            <div className="grow">
               <h5 className="card-title mb-2 fw-semibold" style={{ fontSize: '18px', color: '#000' }}>Persons/Employees Standard Fields</h5>
               <p className="text-muted mb-0" style={{ fontSize: '14px', color: '#666', lineHeight: '1.6' }}>
                 Persons/employees are individuals to whom you 'assign' (check-out) assets. These could be employees in your organization or students in your school/university. Select the fields you would like to use for the persons/employees table.
