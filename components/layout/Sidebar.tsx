@@ -313,12 +313,14 @@ export default function Sidebar() {
     { href: "/help", label: "Help / Support", icon: LifeBuoy, hasSubmenu: true },
   ];
 
-  const isActive = (href: string) => pathname === href || pathname?.startsWith(href + "/");
-  const isAssetsActive = 
+  const isActive = (href: string) => pathname === href;
+  const hasActiveAssetsSubmenu = 
     assetsIndentedSubmenu.some((item) => isActive(item.href)) ||
     assetsNonIndentedItems.some((item) => isActive(item.href)) ||
     assetsSubmenu.some((item) => isActive(item.href));
-  const isAlertsActive = alertsSubmenu.some((item) => isActive(item.href)) || isActive("/dashboard/alerts/setup");
+  const isAssetsActive = pathname === "/assets" && !hasActiveAssetsSubmenu;
+  const hasActiveAlertSubmenu = alertsSubmenu.some((item) => isActive(item.href)) || isActive("/dashboard/alerts/setup");
+  const isAlertsActive = pathname === "/dashboard/alerts" && !hasActiveAlertSubmenu;
   const isInventoryActive = inventorySubmenu.some((item) => isActive(item.href));
   const isListsActive = listsSubmenu.some((item) => isActive(item.href));
   const isCustomReportsActive = customReportsSubmenu.some((item) => isActive(item.href)) || isActive("/reports/custom");
@@ -342,6 +344,20 @@ export default function Sidebar() {
   const isSetupActive = setupSubmenu.some((item) => isActive(item.href)) || isDatabasesActive || isCustomizeFormsActive || isActive("/setup");
   const isHelpActive = helpSubmenu.some((item) => isActive(item.href)) || isActive("/help");
   const totalAlerts = alertsSubmenu.reduce((sum, item) => sum + parseInt(item.badge), 0);
+
+  // Auto-expand Alerts if active
+  useEffect(() => {
+    if (hasActiveAlertSubmenu) {
+      setIsAlertsOpen(true);
+    }
+  }, [hasActiveAlertSubmenu]);
+
+  // Auto-expand Assets if active
+  useEffect(() => {
+    if (hasActiveAssetsSubmenu) {
+      setIsAssetsOpen(true);
+    }
+  }, [hasActiveAssetsSubmenu]);
 
   // Auto-expand Custom Reports if active
   useEffect(() => {
@@ -692,12 +708,12 @@ export default function Sidebar() {
                 {isAlertsOpen ? (
                   <ChevronDown className={cn(
                     "h-4 w-4",
-                    isAlertsActive ? "text-white" : "text-gray-900"
+                    isAlertsActive ? "text-white" : "text-gray-900 dark:text-gray-400"
                   )} />
                 ) : (
                   <ChevronRight className={cn(
                     "h-4 w-4",
-                    isAlertsActive ? "text-white" : "text-gray-900"
+                    isAlertsActive ? "text-white" : "text-gray-900 dark:text-gray-400"
                   )} />
                 )}
               </>
