@@ -9,33 +9,125 @@ interface SignInModalProps {
   onSwitchToSignUp: () => void;
 }
 
+interface LoginResponse {
+  success: boolean;
+  message: string;
+  token: string;
+  user: {
+    _id: string;
+    name: string;
+    email: string;
+    role: string;
+    projectName: string;
+    projects: Array<{
+      projectId: {
+        _id: string;
+        name: string;
+        code: string;
+        status: string;
+      };
+      projectName: string;
+      projectCode: string;
+      role: string;
+      accessLevel: string;
+      isActive: boolean;
+      _id: string;
+      assignedAt: string;
+    }>;
+    primaryProject: {
+      projectId: {
+        _id: string;
+        name: string;
+        code: string;
+        status: string;
+      };
+      projectName: string;
+      projectCode: string;
+      role: string;
+      accessLevel: string;
+      isActive: boolean;
+      _id: string;
+      assignedAt: string;
+    };
+    status: string;
+  };
+}
+
 export default function SignInModal({ isOpen, onClose, onSwitchToSignUp }: SignInModalProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
   if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
     setIsLoading(true);
-    
-    // Simulate login - in real app, this would call an API
-    setTimeout(() => {
-      // Store login state (in real app, use proper auth)
-      if (rememberMe) {
-        localStorage.setItem("rememberMe", "true");
+
+    try {
+      const response = await fetch("https://digitalasset.zenapi.co.in/api/auth/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email,
+          password,
+        }),
+      });
+
+      const data: LoginResponse = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || "Login failed. Please check your credentials.");
       }
-      localStorage.setItem("isLoggedIn", "true");
-      localStorage.setItem("userEmail", email);
-      
+
+      // Store token
+      if (data.token) {
+        if (rememberMe) {
+          localStorage.setItem("authToken", data.token);
+          localStorage.setItem("rememberMe", "true");
+        } else {
+          sessionStorage.setItem("authToken", data.token);
+        }
+      }
+
+      // Store user info
+      if (data.user) {
+        localStorage.setItem("isLoggedIn", "true");
+        localStorage.setItem("userEmail", data.user.email);
+        localStorage.setItem("userName", data.user.name);
+        localStorage.setItem("userId", data.user._id);
+        localStorage.setItem("userRole", data.user.role);
+        localStorage.setItem("projectName", data.user.projectName);
+        localStorage.setItem("userStatus", data.user.status);
+
+        // Store projects data
+        if (data.user.projects) {
+          localStorage.setItem("userProjects", JSON.stringify(data.user.projects));
+        }
+
+        // Store primary project
+        if (data.user.primaryProject) {
+          localStorage.setItem("primaryProject", JSON.stringify(data.user.primaryProject));
+          localStorage.setItem("currentProjectId", data.user.primaryProject.projectId._id);
+          localStorage.setItem("currentProjectName", data.user.primaryProject.projectName);
+          localStorage.setItem("currentProjectCode", data.user.primaryProject.projectCode);
+        }
+      }
+
       setIsLoading(false);
       onClose();
       router.push("/dashboard");
-    }, 500);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "An error occurred during login. Please try again.");
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -66,6 +158,13 @@ export default function SignInModal({ isOpen, onClose, onSwitchToSignUp }: SignI
           Sign In
         </h2>
 
+        {/* Error Message */}
+        {error && (
+          <div className="mb-4 rounded border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
+            {error}
+          </div>
+        )}
+
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Email Field */}
@@ -77,7 +176,10 @@ export default function SignInModal({ isOpen, onClose, onSwitchToSignUp }: SignI
               id="signin-email"
               type="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                if (error) setError(null);
+              }}
               className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-gray-400 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white"
               placeholder="Enter your email"
               required
@@ -94,7 +196,10 @@ export default function SignInModal({ isOpen, onClose, onSwitchToSignUp }: SignI
                 id="signin-password"
                 type={showPassword ? "text" : "password"}
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  if (error) setError(null);
+                }}
                 className="w-full rounded border border-gray-300 px-3 py-2 pr-10 text-sm focus:border-gray-400 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                 placeholder="Enter your password"
                 required

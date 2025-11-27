@@ -1,11 +1,25 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 interface CreateAccountModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSwitchToSignIn: () => void;
+}
+
+interface RegisterResponse {
+  success: boolean;
+  message: string;
+  user?: {
+    _id: string;
+    name: string;
+    email: string;
+    role: string;
+    projectName: string;
+  };
+  token?: string;
 }
 
 export default function CreateAccountModal({ isOpen, onClose, onSwitchToSignIn }: CreateAccountModalProps) {
@@ -17,6 +31,10 @@ export default function CreateAccountModal({ isOpen, onClose, onSwitchToSignIn }
     confirmPassword: "",
   });
   const [agreeToTerms, setAgreeToTerms] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const router = useRouter();
 
   if (!isOpen) return null;
 
@@ -25,20 +43,76 @@ export default function CreateAccountModal({ isOpen, onClose, onSwitchToSignIn }
       ...formData,
       [e.target.name]: e.target.value,
     });
+    // Clear error when user starts typing
+    if (error) setError(null);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
+    setSuccess(null);
+
     if (formData.password !== formData.confirmPassword) {
-      alert("Passwords do not match");
+      setError("Passwords do not match");
       return;
     }
     if (!agreeToTerms) {
-      alert("Please agree to the Terms & Privacy Policy");
+      setError("Please agree to the Terms & Privacy Policy");
       return;
     }
-    // Handle sign up logic here
-    console.log("Sign up:", formData);
+
+    setIsLoading(true);
+
+    try {
+      const response = await fetch("https://digitalasset.zenapi.co.in/api/auth/register", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: `${formData.firstName} ${formData.lastName}`.trim(),
+          email: formData.email,
+          password: formData.password,
+          role: "admin",
+          projectName: "Exozen",
+        }),
+      });
+
+      const data: RegisterResponse = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || "Registration failed. Please try again.");
+      }
+
+      if (data.success) {
+        // Store token if present
+        if (data.token) {
+          localStorage.setItem("authToken", data.token);
+        }
+
+        // Store user info
+        if (data.user) {
+          localStorage.setItem("userEmail", data.user.email);
+          localStorage.setItem("userName", data.user.name);
+          localStorage.setItem("userRole", data.user.role);
+          localStorage.setItem("projectName", data.user.projectName);
+        }
+
+        setSuccess(data.message || "Registration successful!");
+        
+        // Close modal and redirect after a short delay
+        setTimeout(() => {
+          onClose();
+          router.push("/dashboard");
+        }, 1500);
+      } else {
+        throw new Error(data.message || "Registration failed. Please try again.");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "An error occurred during registration. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -78,6 +152,20 @@ export default function CreateAccountModal({ isOpen, onClose, onSwitchToSignIn }
             Need to be added as a user to an existing account?
           </a>
         </div>
+
+        {/* Error Message */}
+        {error && (
+          <div className="mb-4 rounded border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
+            {error}
+          </div>
+        )}
+
+        {/* Success Message */}
+        {success && (
+          <div className="mb-4 rounded border border-green-300 bg-green-50 p-3 text-sm text-green-800 dark:border-green-800 dark:bg-green-900/20 dark:text-green-400">
+            {success}
+          </div>
+        )}
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-3">
@@ -221,9 +309,10 @@ export default function CreateAccountModal({ isOpen, onClose, onSwitchToSignIn }
             </button>
             <button
               type="submit"
-              className="rounded bg-yellow-500 px-5 py-2 text-sm font-medium text-gray-800 hover:bg-yellow-600 dark:bg-yellow-400 dark:hover:bg-yellow-500"
+              disabled={isLoading}
+              className="rounded bg-yellow-500 px-5 py-2 text-sm font-medium text-gray-800 hover:bg-yellow-600 dark:bg-yellow-400 dark:hover:bg-yellow-500 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Sign Up
+              {isLoading ? "Signing Up..." : "Sign Up"}
             </button>
           </div>
         </form>
