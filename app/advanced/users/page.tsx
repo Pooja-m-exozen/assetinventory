@@ -19,9 +19,10 @@ import {
   type SecurityGroupOption,
   type CreateUserData,
 } from "@/lib/api/users";
+import { getSecurityGroups } from "@/lib/api/security-groups";
 
 export default function UsersPage() {
-  const [selectedRows, setSelectedRows] = useState<number[]>([]);
+  const [selectedRows, setSelectedRows] = useState<(number | string)[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [recordsPerPage, setRecordsPerPage] = useState(10);
   const [searchQuery, setSearchQuery] = useState("");
@@ -35,7 +36,7 @@ export default function UsersPage() {
     startRecord: 0,
     endRecord: 0,
   });
-  const [isDeleting, setIsDeleting] = useState<number | null>(null);
+  const [isDeleting, setIsDeleting] = useState<number | string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -45,14 +46,23 @@ export default function UsersPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formErrors, setFormErrors] = useState<{ [key: string]: string }>({});
   const [securityGroups, setSecurityGroups] = useState<SecurityGroupOption[]>([]);
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+  name: string;
+  email: string;
+    password: string;
+  phone: string;
+    jobTitle: string;
+  role: string;
+    securityGroupId: number | string;
+    status: string;
+  }>({
     name: "",
     email: "",
     password: "",
     phone: "",
     jobTitle: "",
     role: "",
-    securityGroupId: 0,
+    securityGroupId: "",
     status: "active",
   });
   const [searchCriteria, setSearchCriteria] = useState({
@@ -91,16 +101,71 @@ export default function UsersPage() {
         searchQuery,
         searchField
       );
-      setUsers(response.data || []);
-      setPagination({
-        totalRecords: response.pagination?.totalRecords || 0,
-        totalPages: response.pagination?.totalPages || 0,
-        startRecord: response.pagination?.startRecord || 0,
-        endRecord: response.pagination?.endRecord || 0,
-      });
+      
+      // Handle different response structures
+      let usersData: UserType[] = [];
+      let paginationData = {
+        totalRecords: 0,
+        totalPages: 0,
+        startRecord: 0,
+        endRecord: 0,
+      };
+
+      if (response) {
+        // Check if response has data array directly
+        if (Array.isArray(response)) {
+          usersData = response;
+          paginationData = {
+            totalRecords: response.length,
+            totalPages: 1,
+            startRecord: 1,
+            endRecord: response.length,
+          };
+        } else if (response.data) {
+          usersData = Array.isArray(response.data) ? response.data : [];
+          if (response.pagination) {
+            paginationData = {
+              totalRecords: response.pagination.totalRecords || usersData.length,
+              totalPages: response.pagination.totalPages || 1,
+              startRecord: response.pagination.startRecord || ((currentPage - 1) * recordsPerPage + 1),
+              endRecord: response.pagination.endRecord || Math.min(currentPage * recordsPerPage, usersData.length),
+            };
+          } else {
+            paginationData = {
+              totalRecords: usersData.length,
+              totalPages: Math.ceil(usersData.length / recordsPerPage),
+              startRecord: (currentPage - 1) * recordsPerPage + 1,
+              endRecord: Math.min(currentPage * recordsPerPage, usersData.length),
+            };
+          }
+        }
+      }
+
+      setUsers(usersData);
+      setPagination(paginationData);
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to fetch users";
-      setError(errorMessage);
+      console.error("Error in fetchUsers:", err);
+      
+      const errorWithDetails = err as Error & { details?: any };
+      let errorMessage = err instanceof Error ? err.message : "Failed to fetch users";
+      
+      // Check for INTERNAL_ERROR specifically
+      if (errorWithDetails.details) {
+        if (errorWithDetails.details.error) {
+          const errorObj = errorWithDetails.details.error;
+          if (errorObj.code === "INTERNAL_ERROR" || errorObj.message?.includes("INTERNAL_ERROR")) {
+            errorMessage = "Unable to fetch users from server. Please try again or contact support.";
+          } else {
+            errorMessage = errorObj.message || errorMessage;
+          }
+        }
+      }
+      
+      // Check error message for specific patterns
+      if (errorMessage.toLowerCase().includes("internal_error") || 
+          errorMessage.toLowerCase().includes("internal error")) {
+        errorMessage = "Server error occurred. Please try refreshing the page.";
+      }
 
       if (errorMessage.toLowerCase().includes("unauthorized") ||
           errorMessage.toLowerCase().includes("token") ||
@@ -109,8 +174,10 @@ export default function UsersPage() {
           localStorage.removeItem("authToken");
           sessionStorage.removeItem("authToken");
         }
+        errorMessage = "Session expired. Please log in again.";
       }
 
+      setError(errorMessage);
       setUsers([]);
       setPagination({
         totalRecords: 0,
@@ -126,10 +193,29 @@ export default function UsersPage() {
   // Fetch security groups for dropdown
   const fetchSecurityGroups = useCallback(async () => {
     try {
-      const response = await getSecurityGroupsForUsers();
-      setSecurityGroups(response.data || []);
+      // Try the users-specific endpoint first
+      let groups: SecurityGroupOption[] = [];
+      try {
+        const response = await getSecurityGroupsForUsers();
+        groups = response.data || [];
+        console.log("Security groups from users endpoint:", groups);
+      } catch (err) {
+        console.warn("Failed to fetch from users endpoint, trying security-groups endpoint:", err);
+        // Fallback to security-groups endpoint
+        const sgResponse = await getSecurityGroups(true, false);
+        groups = (sgResponse.data || []).map(sg => ({
+          id: sg.id,
+          name: sg.name,
+          description: sg.description || "",
+        }));
+        console.log("Security groups from security-groups endpoint:", groups);
+      }
+      
+      setSecurityGroups(groups);
+      return groups;
     } catch (err) {
       console.error("Failed to fetch security groups:", err);
+      return [];
     }
   }, []);
 
@@ -161,7 +247,7 @@ export default function UsersPage() {
     }
   };
 
-  const handleSelectRow = (id: number) => {
+  const handleSelectRow = (id: number | string) => {
     if (selectedRows.includes(id)) {
       setSelectedRows(selectedRows.filter(rowId => rowId !== id));
     } else {
@@ -169,7 +255,7 @@ export default function UsersPage() {
     }
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: number | string) => {
     if (!confirm("Are you sure you want to delete this user?")) {
       return;
     }
@@ -302,7 +388,7 @@ export default function UsersPage() {
       phone: "",
       jobTitle: "",
       role: "",
-      securityGroupId: securityGroups.length > 0 ? securityGroups[0].id : 0,
+      securityGroupId: securityGroups.length > 0 ? securityGroups[0].id : "",
       status: "active",
     });
     setFormErrors({});
@@ -311,7 +397,23 @@ export default function UsersPage() {
     setIsModalOpen(true);
   };
 
-  const handleEdit = (user: UserType) => {
+  const handleEdit = async (user: UserType) => {
+    // Always refresh security groups before editing to ensure we have the latest list
+    const groups = await fetchSecurityGroups();
+    const currentGroups = groups.length > 0 ? groups : securityGroups;
+    
+    // Verify the user's current securityGroupId exists in the list (compare as strings)
+    let validSecurityGroupId: number | string = user.securityGroupId || "";
+    if (user.securityGroupId) {
+      const groupExists = currentGroups.find(g => String(g.id) === String(user.securityGroupId));
+      if (!groupExists) {
+        console.warn(`User's security group ID ${user.securityGroupId} not found in available groups. Using first available group.`);
+        validSecurityGroupId = currentGroups.length > 0 ? currentGroups[0].id : "";
+      }
+    } else if (currentGroups.length > 0) {
+      validSecurityGroupId = currentGroups[0].id;
+    }
+    
     setFormData({
       name: user.name || "",
       email: user.email || "",
@@ -319,9 +421,10 @@ export default function UsersPage() {
       phone: user.phone || "",
       jobTitle: user.jobTitle || "",
       role: user.role || "",
-      securityGroupId: user.securityGroupId || 0,
+      securityGroupId: validSecurityGroupId,
       status: user.status || "active",
     });
+    
     setFormErrors({});
     setIsEditMode(true);
     setEditingUser(user);
@@ -339,7 +442,7 @@ export default function UsersPage() {
       phone: "",
       jobTitle: "",
       role: "",
-      securityGroupId: securityGroups.length > 0 ? securityGroups[0].id : 0,
+      securityGroupId: securityGroups.length > 0 ? securityGroups[0].id : "",
       status: "active",
     });
     setFormErrors({});
@@ -381,8 +484,14 @@ export default function UsersPage() {
       }
     }
 
-    if (!formData.securityGroupId || formData.securityGroupId === 0) {
+    if (!formData.securityGroupId || formData.securityGroupId === "" || formData.securityGroupId === 0) {
       errors.securityGroupId = "Security group is required";
+    } else if (securityGroups.length > 0) {
+      // Verify the selected security group exists (compare as strings to handle both string and number IDs)
+      const selectedGroup = securityGroups.find(g => String(g.id) === String(formData.securityGroupId));
+      if (!selectedGroup) {
+        errors.securityGroupId = "Selected security group is invalid";
+      }
     }
 
     if (formData.phone && formData.phone.trim()) {
@@ -401,7 +510,8 @@ export default function UsersPage() {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: name === "securityGroupId" ? Number(value) : value }));
+    // Keep securityGroupId as string (MongoDB ObjectId) or number, don't convert
+    setFormData(prev => ({ ...prev, [name]: value }));
     if (formErrors[name]) {
       setFormErrors(prev => {
         const newErrors = { ...prev };
@@ -431,16 +541,78 @@ export default function UsersPage() {
       }
 
       if (isEditMode && editingUser) {
+        // Validate securityGroupId for edit mode
+        if (!formData.securityGroupId || formData.securityGroupId === "" || formData.securityGroupId === 0) {
+          setFormErrors({ securityGroupId: "Please select a security group" });
+          setIsSubmitting(false);
+          return;
+        }
+
+        // Refresh security groups to ensure we have the latest list
+        const latestGroups = await fetchSecurityGroups();
+        const groupsToCheck = latestGroups.length > 0 ? latestGroups : securityGroups;
+        
+        console.log("Available security groups:", groupsToCheck);
+        console.log("Selected securityGroupId:", formData.securityGroupId, "Type:", typeof formData.securityGroupId);
+        
+        // Verify security group exists in the list (compare as strings to handle both string and number IDs)
+        const selectedGroup = groupsToCheck.find(g => String(g.id) === String(formData.securityGroupId));
+        if (!selectedGroup) {
+          const errorMsg = `Selected security group (ID: ${formData.securityGroupId}) is invalid. Available groups: ${groupsToCheck.map(g => `${g.name} (ID: ${g.id})`).join(", ") || "none"}`;
+          setFormErrors({ securityGroupId: errorMsg });
+          setIsSubmitting(false);
+          return;
+        }
+
         const userData = {
           name: formData.name.trim(),
           email: formData.email.trim(),
           ...(cleanedPhone && { phone: cleanedPhone }),
           ...(formData.jobTitle.trim() && { jobTitle: formData.jobTitle.trim() }),
           ...(formData.role.trim() && { role: formData.role.trim() }),
-          securityGroupId: formData.securityGroupId,
+          securityGroupId: formData.securityGroupId, // Keep as string or number (MongoDB ObjectId)
           status: formData.status,
         };
-        await updateUser(editingUser.id, userData);
+        
+        console.log("Updating user ID:", editingUser.id, "with data:", userData);
+        console.log("Selected security group:", selectedGroup);
+        console.log("Security group ID being sent:", formData.securityGroupId, "Type:", typeof formData.securityGroupId);
+        
+        try {
+          // If only security group changed, try using the dedicated endpoint first
+          if (String(editingUser.securityGroupId) !== String(formData.securityGroupId)) {
+            console.log("Security group changed, using assignUserToSecurityGroup endpoint");
+            try {
+              await assignUserToSecurityGroup(editingUser.id, formData.securityGroupId);
+              // If security group update succeeds, update other fields if they changed
+              const otherFieldsChanged = 
+                editingUser.name !== userData.name ||
+                editingUser.email !== userData.email ||
+                editingUser.phone !== userData.phone ||
+                editingUser.jobTitle !== userData.jobTitle ||
+                editingUser.role !== userData.role ||
+                editingUser.status !== userData.status;
+              
+              if (otherFieldsChanged) {
+                // Remove securityGroupId from userData since we already updated it
+                const { securityGroupId, ...otherData } = userData;
+                if (Object.keys(otherData).length > 0) {
+                  await updateUser(editingUser.id, otherData);
+                }
+              }
+            } catch (assignError) {
+              console.warn("assignUserToSecurityGroup failed, trying regular update:", assignError);
+              // Fall back to regular update
+              await updateUser(editingUser.id, userData);
+            }
+          } else {
+            // Security group didn't change, just update other fields
+            await updateUser(editingUser.id, userData);
+          }
+        } catch (updateError) {
+          // Re-throw to be caught by outer catch block
+          throw updateError;
+        }
       } else {
         // Ensure password meets requirements
         const password = formData.password.trim();
@@ -460,13 +632,13 @@ export default function UsersPage() {
         }
 
         // Validate securityGroupId
-        if (!formData.securityGroupId || formData.securityGroupId === 0) {
+        if (!formData.securityGroupId || formData.securityGroupId === "" || formData.securityGroupId === 0) {
           setFormErrors({ securityGroupId: "Please select a security group" });
           return;
         }
 
-        // Verify security group exists in the list
-        const selectedGroup = securityGroups.find(g => g.id === formData.securityGroupId);
+        // Verify security group exists in the list (compare as strings to handle both string and number IDs)
+        const selectedGroup = securityGroups.find(g => String(g.id) === String(formData.securityGroupId));
         if (!selectedGroup) {
           setFormErrors({ securityGroupId: "Selected security group is invalid. Please refresh and try again." });
           return;
@@ -520,7 +692,14 @@ export default function UsersPage() {
           const apiErrors: { [key: string]: string } = {};
 
           Object.keys(validationErrors).forEach((field) => {
-            apiErrors[field] = validationErrors[field];
+            let errorMsg = validationErrors[field];
+            // Special handling for securityGroupId errors
+            if (field === "securityGroupId" && errorMsg.includes("not found")) {
+              errorMsg = "Selected security group is invalid or no longer exists. Please refresh the page and select a different group.";
+              // Refresh security groups
+              fetchSecurityGroups();
+            }
+            apiErrors[field] = errorMsg;
           });
 
           setFormErrors(apiErrors);
@@ -636,7 +815,7 @@ export default function UsersPage() {
               disabled={currentPage === pagination.totalPages || loading}
             >
               <ChevronRight className="w-4 h-4 text-gray-600" />
-            </button>
+        </button>
           </div>
         )}
       </div>
@@ -724,14 +903,14 @@ export default function UsersPage() {
                 )}
               </button>
             )}
-          </div>
+            </div>
 
           {/* Description */}
           <div className="mb-4">
             <p className="text-sm text-gray-600 leading-relaxed">
-              Create new users who will be able to access your AssetTiger system. You can decide each user's privileges and what they can and can't do within your account.
-            </p>
-          </div>
+              Create new users who will be able to access your system. You can decide each user's privileges and what they can and can't do within your account.
+              </p>
+            </div>
 
           {/* Search Section */}
           <div className="flex flex-col sm:flex-row gap-3 mb-4">
@@ -803,12 +982,12 @@ export default function UsersPage() {
           {/* Users Table */}
           {!loading && !error && users.length > 0 && (
             <>
-              {/* Table Controls Top */}
+          {/* Table Controls Top */}
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
                 <div className="flex items-center gap-3">
-                  <select 
+                <select 
                     className="px-3 py-1.5 border border-gray-300 rounded-lg bg-white text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    value={recordsPerPage}
+                  value={recordsPerPage}
                     onChange={(e) => {
                       setRecordsPerPage(Number(e.target.value));
                       setCurrentPage(1);
@@ -818,8 +997,8 @@ export default function UsersPage() {
                     <option value="25">25 per page</option>
                     <option value="50">50 per page</option>
                     <option value="100">100 per page</option>
-                  </select>
-                </div>
+                </select>
+              </div>
                 {pagination.totalPages > 1 && (
                   <div className="flex items-center gap-2">
                     <button
@@ -839,8 +1018,8 @@ export default function UsersPage() {
                     >
                       Next
                     </button>
-                  </div>
-                )}
+            </div>
+          )}
               </div>
 
               {/* Table */}
@@ -857,23 +1036,23 @@ export default function UsersPage() {
                         />
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200">
-                        Name
-                      </th>
+                    Name
+                  </th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200">
-                        Group Name
-                      </th>
+                    Group Name
+                  </th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200">
                         Job Title
-                      </th>
+                  </th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200">
-                        Email
-                      </th>
+                    Email
+                  </th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200">
-                        Phone
-                      </th>
+                    Phone
+                  </th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Action</th>
-                    </tr>
-                  </thead>
+                </tr>
+              </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
                     {users.map((user) => (
                       <tr key={user.id} className="hover:bg-gray-50 transition-colors">
@@ -889,28 +1068,28 @@ export default function UsersPage() {
                           <div className="flex items-center gap-2">
                             <User className="w-4 h-4 text-gray-400" />
                             <span className="font-medium">{user.name}</span>
-                            {user.role && (
+                          {user.role && (
                               <span className="px-2 py-0.5 bg-yellow-100 text-yellow-800 text-xs font-medium rounded">
-                                {user.role}
-                              </span>
-                            )}
-                          </div>
-                        </td>
+                              {user.role}
+                            </span>
+                          )}
+                        </div>
+                      </td>
                         <td className="px-4 py-3 text-sm text-gray-700 border-r border-gray-200">
                           <div className="flex items-center gap-2">
                             <Shield className="w-4 h-4 text-gray-400" />
                             <span>{user.groupName || "-"}</span>
                           </div>
-                        </td>
+                      </td>
                         <td className="px-4 py-3 text-sm text-gray-700 border-r border-gray-200">
                           {user.jobTitle || "-"}
-                        </td>
+                      </td>
                         <td className="px-4 py-3 text-sm text-gray-700 border-r border-gray-200">
                           <div className="flex items-center gap-2">
                             <Mail className="w-4 h-4 text-gray-400" />
                             <span>{user.email}</span>
                           </div>
-                        </td>
+                      </td>
                         <td className="px-4 py-3 text-sm text-gray-700 border-r border-gray-200">
                           {user.phone ? (
                             <div className="flex items-center gap-2">
@@ -920,7 +1099,7 @@ export default function UsersPage() {
                           ) : (
                             "-"
                           )}
-                        </td>
+                      </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2">
                             <button 
@@ -958,17 +1137,17 @@ export default function UsersPage() {
                         </td>
                       </tr>
                     ))}
-                  </tbody>
-                </table>
-              </div>
+              </tbody>
+            </table>
+          </div>
 
-              {/* Table Summary */}
+          {/* Table Summary */}
               <div className="flex justify-between items-center mt-4 pt-4 border-t border-gray-200">
                 <div className="text-sm text-gray-600">
                   Showing <span className="font-medium text-gray-900">{startRecord}</span> to{" "}
                   <span className="font-medium text-gray-900">{endRecord}</span> of{" "}
                   <span className="font-medium text-gray-900">{totalRecords}</span> records
-                </div>
+              </div>
                 {pagination.totalPages > 1 && (
                   <div className="flex items-center gap-2">
                     <button
@@ -988,12 +1167,12 @@ export default function UsersPage() {
                     >
                       <ChevronRight className="w-4 h-4 text-gray-600" />
                     </button>
-                  </div>
-                )}
-              </div>
-            </>
+            </div>
           )}
         </div>
+            </>
+          )}
+      </div>
       </div>
 
       {/* Add/Edit User Modal */}
@@ -1180,14 +1359,15 @@ export default function UsersPage() {
                   </label>
                   <select
                     name="securityGroupId"
-                    value={formData.securityGroupId}
+                    value={formData.securityGroupId || 0}
                     onChange={handleInputChange}
                     className={`w-full px-4 py-2.5 border rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
                       formErrors.securityGroupId ? 'border-red-500' : 'border-gray-300'
                     }`}
                     disabled={isSubmitting}
+                    key={`security-group-${formData.securityGroupId}-${isEditMode ? editingUser?.id : 'new'}`}
                   >
-                    <option value={0}>Select Security Group</option>
+                    <option value="">Select Security Group</option>
                     {securityGroups.map((group) => (
                       <option key={group.id} value={group.id}>
                         {group.name}
