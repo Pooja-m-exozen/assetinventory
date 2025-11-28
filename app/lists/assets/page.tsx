@@ -14,10 +14,17 @@ import {
   ExternalLink,
   CheckSquare,
   List,
+  Loader2,
+  AlertCircle,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import SetupColumns from "@/app/components/SetupColumns";
 import AssetViewModal from "@/app/components/AssetViewModal";
+import {
+  getAssetsList,
+  exportAssetsList,
+  type ListAsset,
+} from "@/lib/api/lists";
 
 interface Asset {
   id: string;
@@ -28,72 +35,17 @@ interface Asset {
   status: "Available" | "Broken";
   serialNo: string;
   capacity: string;
-  imageType?: string; // For different dummy image types
+  imageType?: string;
 }
 
-const dummyAssets: Asset[] = [
-  {
-    id: "1",
-    assetTagId: "EXO/2025/CGB-WTP-01",
-    description: "Water Treatment Plant 200 KLD",
-    brand: "Kirloskar",
-    purchaseDate: "11/19/2025",
-    status: "Available",
-    serialNo: "NA",
-    capacity: "",
-    imageType: "grid",
-  },
-  {
-    id: "2",
-    assetTagId: "EXO/2025/CGB-WTP-D01",
-    description: "Dosing-1",
-    brand: "",
-    purchaseDate: "11/19/2025",
-    status: "Broken",
-    serialNo: "241114ED1022",
-    capacity: "6LPH",
-    imageType: "pump",
-  },
-  {
-    id: "3",
-    assetTagId: "EXO/2025/CGB-WTP-D02",
-    description: "Dosing-2",
-    brand: "",
-    purchaseDate: "11/19/2025",
-    status: "Available",
-    serialNo: "241113ED1072",
-    capacity: "6LPH",
-    imageType: "pump",
-  },
-  {
-    id: "4",
-    assetTagId: "EXO/2025/CGB-WTP-FFP01",
-    description: "Filter Feed Pump 1",
-    brand: "",
-    purchaseDate: "11/19/2025",
-    status: "Available",
-    serialNo: "A23Z8Z002943",
-    capacity: "3.7HP",
-    imageType: "blue-pump",
-  },
-  {
-    id: "5",
-    assetTagId: "EXO/2025/CGB-WTP-FFP02",
-    description: "Filter Feed Pump-2",
-    brand: "",
-    purchaseDate: "11/19/2025",
-    status: "Available",
-    serialNo: "A23Z8Z002920",
-    capacity: "3.7HP",
-    imageType: "blue-pump",
-  },
-];
-
 export default function ListOfAssetsPage() {
+  const [assets, setAssets] = useState<ListAsset[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [sortColumn, setSortColumn] = useState<string | null>("purchaseDate");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("");
   const [showSetupColumns, setShowSetupColumns] = useState(false);
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
   const [selectedColumns, setSelectedColumns] = useState<Record<string, boolean>>({
@@ -106,6 +58,60 @@ export default function ListOfAssetsPage() {
     capacity: true,
     status: true,
   });
+  const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pagination, setPagination] = useState({
+    totalRecords: 0,
+    totalPages: 0,
+    startRecord: 0,
+    endRecord: 0,
+  });
+
+  // Fetch assets from API
+  const fetchAssets = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      if (typeof window !== "undefined") {
+        const token = localStorage.getItem("authToken") || sessionStorage.getItem("authToken");
+        if (!token) {
+          setError("Please login to access this page");
+          setLoading(false);
+          return;
+        }
+      }
+
+      const response = await getAssetsList(
+        currentPage,
+        itemsPerPage,
+        sortColumn || undefined,
+        sortDirection,
+        searchQuery || undefined,
+        statusFilter || undefined
+      );
+
+      setAssets(response.data);
+      setPagination(response.pagination);
+    } catch (err) {
+      console.error("Error fetching assets:", err);
+      setError(err instanceof Error ? err.message : "Failed to fetch assets");
+      setAssets([]);
+      setPagination({
+        totalRecords: 0,
+        totalPages: 0,
+        startRecord: 0,
+        endRecord: 0,
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [currentPage, itemsPerPage, sortColumn, sortDirection, searchQuery, statusFilter]);
+
+  useEffect(() => {
+    fetchAssets();
+  }, [fetchAssets]);
 
   const handleSort = (column: string) => {
     if (sortColumn === column) {
@@ -114,11 +120,47 @@ export default function ListOfAssetsPage() {
       setSortColumn(column);
       setSortDirection("asc");
     }
+    setCurrentPage(1); // Reset to first page on sort
   };
 
-  const totalRecords = dummyAssets.length;
-  const startRecord = (currentPage - 1) * itemsPerPage + 1;
-  const endRecord = Math.min(currentPage * itemsPerPage, totalRecords);
+  const handlePageChange = (newPage: number) => {
+    setCurrentPage(newPage);
+  };
+
+  const handleItemsPerPageChange = (newLimit: number) => {
+    setItemsPerPage(newLimit);
+    setCurrentPage(1); // Reset to first page
+  };
+
+  const handleExportToExcel = async () => {
+    try {
+      setExporting(true);
+      setError(null);
+
+      const blob = await exportAssetsList(
+        "csv",
+        sortColumn || undefined,
+        sortDirection,
+        searchQuery || undefined,
+        statusFilter || undefined
+      );
+
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `assets_export_${new Date().toISOString().split("T")[0]}.csv`;
+      link.style.visibility = "hidden";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Error exporting assets:", err);
+      setError(err instanceof Error ? err.message : "Failed to export assets");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   // Show Setup Columns page if toggled
   if (showSetupColumns) {
@@ -134,8 +176,19 @@ export default function ListOfAssetsPage() {
     );
   }
 
-  const handleViewAsset = (asset: Asset) => {
-    setSelectedAsset(asset);
+  const handleViewAsset = (asset: ListAsset) => {
+    const assetForModal: Asset = {
+      id: asset.id,
+      assetTagId: asset.assetTagId,
+      description: asset.description,
+      brand: asset.brand || "",
+      purchaseDate: asset.purchaseDate || "",
+      status: asset.status as "Available" | "Broken",
+      serialNo: asset.serialNo || "",
+      capacity: asset.capacity || "",
+      imageType: asset.imageType,
+    };
+    setSelectedAsset(assetForModal);
   };
 
   const handleBackToList = () => {
@@ -144,23 +197,53 @@ export default function ListOfAssetsPage() {
 
   const handlePrevAsset = () => {
     if (!selectedAsset) return;
-    const currentIndex = dummyAssets.findIndex((a) => a.id === selectedAsset.id);
+    const currentIndex = assets.findIndex((a) => a.id === selectedAsset.id);
     if (currentIndex > 0) {
-      setSelectedAsset(dummyAssets[currentIndex - 1]);
+      const asset = assets[currentIndex - 1];
+      const assetForModal: Asset = {
+        id: asset.id,
+        assetTagId: asset.assetTagId,
+        description: asset.description,
+        brand: asset.brand || "",
+        purchaseDate: asset.purchaseDate || "",
+        status: asset.status as "Available" | "Broken",
+        serialNo: asset.serialNo || "",
+        capacity: asset.capacity || "",
+        imageType: asset.imageType,
+      };
+      setSelectedAsset(assetForModal);
+    } else if (currentPage > 1) {
+      // Load previous page
+      setCurrentPage(currentPage - 1);
     }
   };
 
   const handleNextAsset = () => {
     if (!selectedAsset) return;
-    const currentIndex = dummyAssets.findIndex((a) => a.id === selectedAsset.id);
-    if (currentIndex < dummyAssets.length - 1) {
-      setSelectedAsset(dummyAssets[currentIndex + 1]);
+    const currentIndex = assets.findIndex((a) => a.id === selectedAsset.id);
+    if (currentIndex < assets.length - 1) {
+      const asset = assets[currentIndex + 1];
+      const assetForModal: Asset = {
+        id: asset.id,
+        assetTagId: asset.assetTagId,
+        description: asset.description,
+        brand: asset.brand || "",
+        purchaseDate: asset.purchaseDate || "",
+        status: asset.status as "Available" | "Broken",
+        serialNo: asset.serialNo || "",
+        capacity: asset.capacity || "",
+        imageType: asset.imageType,
+      };
+      setSelectedAsset(assetForModal);
+    } else if (currentPage < pagination.totalPages) {
+      // Load next page
+      setCurrentPage(currentPage + 1);
     }
   };
 
   const getCurrentAssetIndex = () => {
     if (!selectedAsset) return -1;
-    return dummyAssets.findIndex((a) => a.id === selectedAsset.id);
+    return assets.findIndex((a) => a.id === selectedAsset.id);
   };
 
   // Show Asset View if an asset is selected
@@ -171,64 +254,11 @@ export default function ListOfAssetsPage() {
         onBack={handleBackToList}
         onPrev={handlePrevAsset}
         onNext={handleNextAsset}
-        hasPrev={getCurrentAssetIndex() > 0}
-        hasNext={getCurrentAssetIndex() < dummyAssets.length - 1 && getCurrentAssetIndex() >= 0}
+        hasPrev={getCurrentAssetIndex() > 0 || currentPage > 1}
+        hasNext={getCurrentAssetIndex() < assets.length - 1 || currentPage < pagination.totalPages}
       />
     );
   }
-
-  const handleExportToExcel = () => {
-    // Create CSV content
-    const headers = Object.entries(selectedColumns)
-      .filter(([_, selected]) => selected)
-      .map(([key]) => {
-        const columnMap: Record<string, string> = {
-          assetPhoto: "Asset Photo",
-          assetTagId: "Asset Tag ID",
-          brand: "Brand",
-          description: "Description",
-          purchaseDate: "Purchase Date",
-          serialNo: "Serial No",
-          capacity: "Capacity",
-          status: "Status",
-        };
-        return columnMap[key] || key;
-      });
-
-    const rows = dummyAssets.map((asset) => {
-      return Object.entries(selectedColumns)
-        .filter(([_, selected]) => selected)
-        .map(([key]) => {
-          const valueMap: Record<string, string> = {
-            assetPhoto: "",
-            assetTagId: asset.assetTagId,
-            brand: asset.brand || "",
-            description: asset.description,
-            purchaseDate: asset.purchaseDate,
-            serialNo: asset.serialNo,
-            capacity: asset.capacity || "",
-            status: asset.status,
-          };
-          return valueMap[key] || "";
-        });
-    });
-
-    const csvContent = [
-      headers.join(","),
-      ...rows.map((row) => row.map((cell) => `"${cell}"`).join(",")),
-    ].join("\n");
-
-    // Create blob and download
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const link = document.createElement("a");
-    const url = URL.createObjectURL(blob);
-    link.setAttribute("href", url);
-    link.setAttribute("download", `assets_export_${new Date().toISOString().split("T")[0]}.csv`);
-    link.style.visibility = "hidden";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -242,6 +272,13 @@ export default function ListOfAssetsPage() {
               List of Assets
             </h1>
           </div>
+
+          {error && (
+            <div className="mb-4 rounded-lg bg-red-50 p-4 flex items-center text-red-800">
+              <AlertCircle className="mr-2 h-5 w-5 shrink-0" />
+              {error}
+            </div>
+          )}
 
           {/* Search and Action Row */}
           <div className="flex items-center justify-between mb-4">
@@ -257,22 +294,48 @@ export default function ListOfAssetsPage() {
             </div>
 
             <div className="flex items-center gap-3">
-              <Button variant="outline" className="flex items-center gap-2" onClick={handleExportToExcel}>
-                <FileSpreadsheet className="h-4 w-4" />
-                <span>Export to Excel</span>
+              <Button
+                variant="outline"
+                className="flex items-center gap-2"
+                onClick={handleExportToExcel}
+                disabled={exporting || loading}
+              >
+                {exporting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Exporting...
+                  </>
+                ) : (
+                  <>
+                    <FileSpreadsheet className="h-4 w-4" />
+                    <span>Export to Excel</span>
+                  </>
+                )}
               </Button>
               <Button variant="outline" className="flex items-center gap-2" onClick={() => setShowSetupColumns(true)}>
                 <Settings className="h-4 w-4" />
                 <span>Setup Columns</span>
               </Button>
               <div className="flex items-center gap-1">
-                <Button variant="ghost" size="icon" className="h-8 w-8">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  disabled={currentPage <= 1 || loading}
+                >
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
                 <Button variant="ghost" size="sm" className="h-8 w-8 bg-yellow-500 text-gray-900 hover:bg-yellow-600">
-                  1
+                  {currentPage}
                 </Button>
-                <Button variant="ghost" size="icon" className="h-8 w-8">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  disabled={currentPage >= pagination.totalPages || loading}
+                >
                   <ChevronRight className="h-4 w-4" />
                 </Button>
               </div>
@@ -283,9 +346,10 @@ export default function ListOfAssetsPage() {
           <div className="flex items-center gap-2">
             <select
               value={itemsPerPage}
-              onChange={(e) => setItemsPerPage(Number(e.target.value))}
+              onChange={(e) => handleItemsPerPageChange(Number(e.target.value))}
               className="px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm"
               style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}
+              disabled={loading}
             >
               <option value={10}>10</option>
               <option value={25}>25</option>
@@ -301,203 +365,243 @@ export default function ListOfAssetsPage() {
 
       {/* Main Content - Table */}
       <div className="p-6">
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-yellow-50 dark:bg-yellow-900/20 border-b border-gray-200 dark:border-gray-700">
-                <tr>
-                  <th className="px-4 py-3 text-left">
-                    <CheckSquare className="h-4 w-4 text-gray-400" />
-                  </th>
-                  {selectedColumns.assetPhoto && (
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+          </div>
+        ) : (
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-yellow-50 dark:bg-yellow-900/20 border-b border-gray-200 dark:border-gray-700">
+                  <tr>
+                    <th className="px-4 py-3 text-left">
+                      <CheckSquare className="h-4 w-4 text-gray-400" />
+                    </th>
+                    {selectedColumns.assetPhoto && (
+                      <th className="px-4 py-3 text-left">
+                        <span className="text-sm font-semibold text-gray-700 dark:text-gray-300" style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}>
+                          Asset Photo
+                        </span>
+                      </th>
+                    )}
+                    {selectedColumns.assetTagId && (
+                      <th className="px-4 py-3 text-left">
+                        <button
+                          onClick={() => handleSort("assetTagId")}
+                          className="flex items-center gap-1 text-sm font-semibold text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100"
+                          style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}
+                        >
+                          Asset Tag ID
+                          <ArrowUpDown className="h-3 w-3" />
+                        </button>
+                      </th>
+                    )}
+                    {selectedColumns.description && (
+                      <th className="px-4 py-3 text-left">
+                        <button
+                          onClick={() => handleSort("description")}
+                          className="flex items-center gap-1 text-sm font-semibold text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100"
+                          style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}
+                        >
+                          Description
+                          <ArrowUpDown className="h-3 w-3" />
+                        </button>
+                      </th>
+                    )}
+                    {selectedColumns.brand && (
+                      <th className="px-4 py-3 text-left">
+                        <button
+                          onClick={() => handleSort("brand")}
+                          className="flex items-center gap-1 text-sm font-semibold text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100"
+                          style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}
+                        >
+                          Brand
+                          <ArrowUpDown className="h-3 w-3" />
+                        </button>
+                      </th>
+                    )}
+                    {selectedColumns.purchaseDate && (
+                      <th className="px-4 py-3 text-left">
+                        <button
+                          onClick={() => handleSort("purchaseDate")}
+                          className="flex items-center gap-1 text-sm font-semibold text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100"
+                          style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}
+                        >
+                          Purchase Date
+                          {sortColumn === "purchaseDate" && (
+                            <span className={cn("text-yellow-500", sortDirection === "asc" ? "rotate-180" : "")}>
+                              ↑
+                            </span>
+                          )}
+                        </button>
+                      </th>
+                    )}
+                    {selectedColumns.status && (
+                      <th className="px-4 py-3 text-left">
+                        <button
+                          onClick={() => handleSort("status")}
+                          className="flex items-center gap-1 text-sm font-semibold text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100"
+                          style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}
+                        >
+                          Status
+                          <ArrowUpDown className="h-3 w-3" />
+                        </button>
+                      </th>
+                    )}
+                    {selectedColumns.serialNo && (
+                      <th className="px-4 py-3 text-left">
+                        <button
+                          onClick={() => handleSort("serialNo")}
+                          className="flex items-center gap-1 text-sm font-semibold text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100"
+                          style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}
+                        >
+                          Serial No
+                          <ArrowUpDown className="h-3 w-3" />
+                        </button>
+                      </th>
+                    )}
+                    {selectedColumns.capacity && (
+                      <th className="px-4 py-3 text-left">
+                        <button
+                          onClick={() => handleSort("capacity")}
+                          className="flex items-center gap-1 text-sm font-semibold text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100"
+                          style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}
+                        >
+                          Capacity
+                          <ArrowUpDown className="h-3 w-3" />
+                        </button>
+                      </th>
+                    )}
                     <th className="px-4 py-3 text-left">
                       <span className="text-sm font-semibold text-gray-700 dark:text-gray-300" style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}>
-                        Asset Photo
+                        Action
                       </span>
                     </th>
-                  )}
-                  {selectedColumns.assetTagId && (
-                    <th className="px-4 py-3 text-left">
-                      <button
-                        onClick={() => handleSort("assetTagId")}
-                        className="flex items-center gap-1 text-sm font-semibold text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100"
-                        style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}
-                      >
-                        Asset Tag ID
-                        <ArrowUpDown className="h-3 w-3" />
-                      </button>
-                    </th>
-                  )}
-                  {selectedColumns.description && (
-                    <th className="px-4 py-3 text-left">
-                      <button
-                        onClick={() => handleSort("description")}
-                        className="flex items-center gap-1 text-sm font-semibold text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100"
-                        style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}
-                      >
-                        Description
-                        <ArrowUpDown className="h-3 w-3" />
-                      </button>
-                    </th>
-                  )}
-                  {selectedColumns.brand && (
-                    <th className="px-4 py-3 text-left">
-                      <button
-                        onClick={() => handleSort("brand")}
-                        className="flex items-center gap-1 text-sm font-semibold text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100"
-                        style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}
-                      >
-                        Brand
-                        <ArrowUpDown className="h-3 w-3" />
-                      </button>
-                    </th>
-                  )}
-                  {selectedColumns.purchaseDate && (
-                    <th className="px-4 py-3 text-left">
-                      <button
-                        onClick={() => handleSort("purchaseDate")}
-                        className="flex items-center gap-1 text-sm font-semibold text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100"
-                        style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}
-                      >
-                        Purchase Date
-                        {sortColumn === "purchaseDate" && (
-                          <span className={cn("text-yellow-500", sortDirection === "asc" ? "rotate-180" : "")}>
-                            ↑
-                          </span>
-                        )}
-                      </button>
-                    </th>
-                  )}
-                  {selectedColumns.status && (
-                    <th className="px-4 py-3 text-left">
-                      <button
-                        onClick={() => handleSort("status")}
-                        className="flex items-center gap-1 text-sm font-semibold text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100"
-                        style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}
-                      >
-                        Status
-                        <ArrowUpDown className="h-3 w-3" />
-                      </button>
-                    </th>
-                  )}
-                  {selectedColumns.serialNo && (
-                    <th className="px-4 py-3 text-left">
-                      <button
-                        onClick={() => handleSort("serialNo")}
-                        className="flex items-center gap-1 text-sm font-semibold text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100"
-                        style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}
-                      >
-                        Serial No
-                        <ArrowUpDown className="h-3 w-3" />
-                      </button>
-                    </th>
-                  )}
-                  {selectedColumns.capacity && (
-                    <th className="px-4 py-3 text-left">
-                      <button
-                        onClick={() => handleSort("capacity")}
-                        className="flex items-center gap-1 text-sm font-semibold text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100"
-                        style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}
-                      >
-                        Capacity
-                        <ArrowUpDown className="h-3 w-3" />
-                      </button>
-                    </th>
-                  )}
-                  <th className="px-4 py-3 text-left">
-                    <span className="text-sm font-semibold text-gray-700 dark:text-gray-300" style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}>
-                      Action
-                    </span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                {dummyAssets.map((asset) => (
-                  <tr key={asset.id} className="hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors">
-                    <td className="px-4 py-4">
-                      <input type="checkbox" className="rounded border-gray-300" />
-                    </td>
-                    <td className="px-4 py-4">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm text-gray-900 dark:text-gray-100" style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}>
-                          {asset.assetTagId}
-                        </span>
-                        <ExternalLink className="h-3 w-3 text-gray-400" />
-                      </div>
-                    </td>
-                    <td className="px-4 py-4">
-                      <span className="text-sm text-gray-900 dark:text-gray-100" style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}>
-                        {asset.description}
-                      </span>
-                    </td>
-                    <td className="px-4 py-4">
-                      <span className="text-sm text-gray-900 dark:text-gray-100" style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}>
-                        {asset.brand || "-"}
-                      </span>
-                    </td>
-                    <td className="px-4 py-4">
-                      <span className="text-sm text-gray-900 dark:text-gray-100" style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}>
-                        {asset.purchaseDate}
-                      </span>
-                    </td>
-                    <td className="px-4 py-4">
-                      <span
-                        className={cn(
-                          "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium",
-                          asset.status === "Available"
-                            ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
-                            : "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
-                        )}
-                        style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}
-                      >
-                        {asset.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-4">
-                      <span className="text-sm text-gray-900 dark:text-gray-100" style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}>
-                        {asset.serialNo}
-                      </span>
-                    </td>
-                    <td className="px-4 py-4">
-                      <span className="text-sm text-gray-900 dark:text-gray-100" style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}>
-                        {asset.capacity || "-"}
-                      </span>
-                    </td>
-                    <td className="px-4 py-4">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="flex items-center gap-1"
-                        onClick={() => handleViewAsset(asset)}
-                      >
-                        <Eye className="h-4 w-4" />
-                        <span>View</span>
-                      </Button>
-                    </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                  {assets.length === 0 ? (
+                    <tr>
+                      <td colSpan={Object.values(selectedColumns).filter(Boolean).length + 2} className="px-4 py-8 text-center text-gray-500">
+                        No assets found
+                      </td>
+                    </tr>
+                  ) : (
+                    assets.map((asset) => (
+                      <tr key={asset.id} className="hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors">
+                        <td className="px-4 py-4">
+                          <input type="checkbox" className="rounded border-gray-300" />
+                        </td>
+                        {selectedColumns.assetTagId && (
+                          <td className="px-4 py-4">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm text-gray-900 dark:text-gray-100" style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}>
+                                {asset.assetTagId}
+                              </span>
+                              <ExternalLink className="h-3 w-3 text-gray-400" />
+                            </div>
+                          </td>
+                        )}
+                        {selectedColumns.description && (
+                          <td className="px-4 py-4">
+                            <span className="text-sm text-gray-900 dark:text-gray-100" style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}>
+                              {asset.description}
+                            </span>
+                          </td>
+                        )}
+                        {selectedColumns.brand && (
+                          <td className="px-4 py-4">
+                            <span className="text-sm text-gray-900 dark:text-gray-100" style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}>
+                              {asset.brand || "-"}
+                            </span>
+                          </td>
+                        )}
+                        {selectedColumns.purchaseDate && (
+                          <td className="px-4 py-4">
+                            <span className="text-sm text-gray-900 dark:text-gray-100" style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}>
+                              {asset.purchaseDate || "-"}
+                            </span>
+                          </td>
+                        )}
+                        {selectedColumns.status && (
+                          <td className="px-4 py-4">
+                            <span
+                              className={cn(
+                                "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium",
+                                asset.status === "Available"
+                                  ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+                                  : "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
+                              )}
+                              style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}
+                            >
+                              {asset.status}
+                            </span>
+                          </td>
+                        )}
+                        {selectedColumns.serialNo && (
+                          <td className="px-4 py-4">
+                            <span className="text-sm text-gray-900 dark:text-gray-100" style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}>
+                              {asset.serialNo || "-"}
+                            </span>
+                          </td>
+                        )}
+                        {selectedColumns.capacity && (
+                          <td className="px-4 py-4">
+                            <span className="text-sm text-gray-900 dark:text-gray-100" style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}>
+                              {asset.capacity || "-"}
+                            </span>
+                          </td>
+                        )}
+                        <td className="px-4 py-4">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="flex items-center gap-1"
+                            onClick={() => handleViewAsset(asset)}
+                          >
+                            <Eye className="h-4 w-4" />
+                            <span>View</span>
+                          </Button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
 
-          {/* Table Footer */}
-          <div className="bg-gray-50 dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 px-6 py-4 flex items-center justify-between">
-            <div className="text-sm text-gray-600 dark:text-gray-400" style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}>
-              Showing {startRecord} to {endRecord} of {totalRecords} records
-            </div>
-            <div className="flex items-center gap-1">
-              <Button variant="ghost" size="icon" className="h-8 w-8">
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <Button variant="ghost" size="sm" className="h-8 w-8 bg-yellow-500 text-gray-900 hover:bg-yellow-600">
-                1
-              </Button>
-              <Button variant="ghost" size="icon" className="h-8 w-8">
-                <ChevronRight className="h-4 w-4" />
-              </Button>
+            {/* Table Footer */}
+            <div className="bg-gray-50 dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 px-6 py-4 flex items-center justify-between">
+              <div className="text-sm text-gray-600 dark:text-gray-400" style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}>
+                Showing {pagination.startRecord} to {pagination.endRecord} of {pagination.totalRecords} records
+              </div>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  disabled={currentPage <= 1 || loading}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button variant="ghost" size="sm" className="h-8 w-8 bg-yellow-500 text-gray-900 hover:bg-yellow-600">
+                  {currentPage}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  disabled={currentPage >= pagination.totalPages || loading}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

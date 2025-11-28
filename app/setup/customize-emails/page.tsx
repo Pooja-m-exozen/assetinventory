@@ -1,7 +1,17 @@
 "use client";
 
-import { useState } from "react";
-import { Mail, HelpCircle, Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, Type, Pencil, ChevronDown, ChevronRight, Info, Settings } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { Mail, HelpCircle, Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, Type, Pencil, ChevronDown, ChevronRight, Info, Settings, Loader2, CheckCircle, AlertCircle } from "lucide-react";
+import {
+  getEmailTemplates,
+  getEmailTemplate,
+  updateEmailTemplate,
+  getMasterTemplateSettings,
+  updateMasterTemplateSettings,
+  resetEmailTemplate,
+  type EmailTemplate as EmailTemplateType,
+  type EmailTemplateBody,
+} from "@/lib/api/email-templates";
 
 interface EmailTemplate {
   id: string;
@@ -142,7 +152,7 @@ const emailTemplates: { [key: string]: EmailTemplateData } = {
 
 export default function CustomizeEmailsPage() {
   const [selectedTemplate, setSelectedTemplate] = useState("check-out-email");
-  const [emailSubject, setEmailSubject] = useState(emailTemplates["check-out-email"]?.subject || "Asset Checkout");
+  const [emailSubject, setEmailSubject] = useState("Asset Checkout");
   const [showSignature, setShowSignature] = useState(true);
   const [expandedCategories, setExpandedCategories] = useState<{ [key: string]: boolean }>({
     "check-out-check-in": true,
@@ -153,8 +163,16 @@ export default function CustomizeEmailsPage() {
   // Master Template state
   const [replyToEnabled, setReplyToEnabled] = useState(false);
   const [replyToEmail, setReplyToEmail] = useState("");
-  const [logoOption, setLogoOption] = useState("company-logo");
+  const [logoOption, setLogoOption] = useState<"assettiger-logo" | "company-logo" | "company-name">("company-logo");
   const [signature, setSignature] = useState("");
+
+  // API state
+  const [templates, setTemplates] = useState<{ [key: string]: EmailTemplateBody & { subject: string; showSignature: boolean } }>({});
+  const [currentTemplateData, setCurrentTemplateData] = useState<EmailTemplateBody & { subject: string; showSignature: boolean } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   const toggleCategory = (categoryKey: string) => {
     setExpandedCategories(prev => ({
@@ -163,22 +181,166 @@ export default function CustomizeEmailsPage() {
     }));
   };
 
-  const handleTemplateChange = (templateId: string) => {
-    setSelectedTemplate(templateId);
-    const template = emailTemplates[templateId];
-    if (template) {
-      setEmailSubject(template.subject);
+  // Fetch all email templates
+  const fetchEmailTemplates = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      if (typeof window !== "undefined") {
+        const token = localStorage.getItem("authToken") || sessionStorage.getItem("authToken");
+        if (!token) {
+          setError("Please login to access this page");
+          setLoading(false);
+          return;
+        }
+      }
+
+      const response = await getEmailTemplates();
+      const templatesMap: { [key: string]: EmailTemplateBody & { subject: string; showSignature: boolean } } = {};
+      
+      response.data.forEach((template: EmailTemplateType) => {
+        templatesMap[template.id] = {
+          subject: template.subject,
+          showSignature: template.showSignature,
+          ...template.body,
+        };
+      });
+
+      setTemplates(templatesMap);
+      
+      // Set initial template if available
+      if (templatesMap[selectedTemplate]) {
+        setCurrentTemplateData(templatesMap[selectedTemplate]);
+        setEmailSubject(templatesMap[selectedTemplate].subject);
+        setShowSignature(templatesMap[selectedTemplate].showSignature);
+      }
+    } catch (err) {
+      console.error("Error fetching email templates:", err);
+      // If 404, use defaults from local object
+      if (err instanceof Error && (err as any).status === 404) {
+        const fallbackTemplates: { [key: string]: EmailTemplateBody & { subject: string; showSignature: boolean } } = {};
+        Object.keys(emailTemplates).forEach(key => {
+          fallbackTemplates[key] = {
+            subject: emailTemplates[key].subject,
+            showSignature: true,
+            ...emailTemplates[key].body,
+          };
+        });
+        setTemplates(fallbackTemplates);
+        if (fallbackTemplates[selectedTemplate]) {
+          setCurrentTemplateData(fallbackTemplates[selectedTemplate]);
+          setEmailSubject(fallbackTemplates[selectedTemplate].subject);
+        }
+      } else {
+        setError(err instanceof Error ? err.message : "Failed to fetch email templates");
+        // Fallback to local templates
+        const fallbackTemplates: { [key: string]: EmailTemplateBody & { subject: string; showSignature: boolean } } = {};
+        Object.keys(emailTemplates).forEach(key => {
+          fallbackTemplates[key] = {
+            subject: emailTemplates[key].subject,
+            showSignature: true,
+            ...emailTemplates[key].body,
+          };
+        });
+        setTemplates(fallbackTemplates);
+        if (fallbackTemplates[selectedTemplate]) {
+          setCurrentTemplateData(fallbackTemplates[selectedTemplate]);
+          setEmailSubject(fallbackTemplates[selectedTemplate].subject);
+        }
+      }
+    } finally {
+      setLoading(false);
     }
+  }, [selectedTemplate]);
+
+  // Fetch master template settings
+  const fetchMasterTemplateSettings = useCallback(async () => {
+    try {
+      const response = await getMasterTemplateSettings();
+      const settings = response.data;
+      
+      setReplyToEnabled(settings.replyToEnabled ?? false);
+      setReplyToEmail(settings.replyToEmail ?? "");
+      setLogoOption(settings.logoOption ?? "company-logo");
+      setSignature(settings.signature ?? "");
+    } catch (err) {
+      console.error("Error fetching master template settings:", err);
+      // If 404, use defaults (already set in state)
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchEmailTemplates();
+    fetchMasterTemplateSettings();
+  }, []);
+
+  const handleTemplateChange = async (templateId: string) => {
+    setSelectedTemplate(templateId);
+    
     // Expand Setup category if master-template is selected
     if (templateId === "master-template") {
       setExpandedCategories(prev => ({
         ...prev,
         "setup": true
       }));
+      return;
+    }
+
+    // Fetch template data
+    if (templates[templateId]) {
+      setCurrentTemplateData(templates[templateId]);
+      setEmailSubject(templates[templateId].subject);
+      setShowSignature(templates[templateId].showSignature);
+    } else {
+      try {
+        const response = await getEmailTemplate(templateId);
+        const template = response.data;
+        const templateData = {
+          subject: template.subject,
+          showSignature: template.showSignature,
+          ...template.body,
+        };
+        setTemplates(prev => ({ ...prev, [templateId]: templateData }));
+        setCurrentTemplateData(templateData);
+        setEmailSubject(template.subject);
+        setShowSignature(template.showSignature);
+      } catch (err) {
+        console.error("Error fetching template:", err);
+        // Fallback to local template if available
+        if (emailTemplates[templateId]) {
+          const fallbackData: EmailTemplateBody & { subject: string; showSignature: boolean } = {
+            subject: emailTemplates[templateId].subject,
+            showSignature: true,
+            ...emailTemplates[templateId].body,
+          };
+          setCurrentTemplateData(fallbackData);
+          setEmailSubject(fallbackData.subject);
+        }
+      }
     }
   };
 
-  const currentTemplate = emailTemplates[selectedTemplate] || emailTemplates["check-out-email"];
+  const getCurrentTemplate = (): EmailTemplateBody & { subject: string; showSignature: boolean } => {
+    if (currentTemplateData) {
+      return currentTemplateData;
+    }
+    if (emailTemplates[selectedTemplate]) {
+      return {
+        subject: emailTemplates[selectedTemplate].subject,
+        showSignature: true,
+        ...emailTemplates[selectedTemplate].body,
+      };
+    }
+    const defaultTemplate = emailTemplates["check-out-email"];
+    return {
+      subject: defaultTemplate.subject,
+      showSignature: true,
+      ...defaultTemplate.body,
+    };
+  };
+  
+  const currentTemplate = getCurrentTemplate();
   const isMasterTemplate = selectedTemplate === "master-template";
 
   const emailCategories = [
@@ -213,21 +375,126 @@ export default function CustomizeEmailsPage() {
     }
   ];
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log("Email template saved", { selectedTemplate, emailSubject, showSignature });
+
+    try {
+      setSaving(true);
+      setError(null);
+      setSuccess(null);
+
+      if (isMasterTemplate) {
+        // Save master template settings
+        await updateMasterTemplateSettings({
+          replyToEnabled,
+          replyToEmail: replyToEnabled ? replyToEmail : undefined,
+          logoOption,
+          signature,
+        });
+        setSuccess("Master template settings saved successfully!");
+      } else {
+        // Save email template
+        await updateEmailTemplate(selectedTemplate, {
+          subject: emailSubject,
+          showSignature,
+          body: {
+            greeting: currentTemplate.greeting,
+            intro: currentTemplate.intro,
+            intro2: currentTemplate.intro2,
+            tableColumns: currentTemplate.tableColumns,
+            notes: currentTemplate.notes,
+            closing: currentTemplate.closing,
+            disclaimer: currentTemplate.disclaimer,
+          },
+        });
+        
+        // Update local state
+        const updatedTemplate: EmailTemplateBody & { subject: string; showSignature: boolean } = {
+          subject: emailSubject,
+          showSignature,
+          greeting: currentTemplate.greeting,
+          intro: currentTemplate.intro,
+          intro2: currentTemplate.intro2,
+          tableColumns: currentTemplate.tableColumns,
+          notes: currentTemplate.notes,
+          closing: currentTemplate.closing,
+          disclaimer: currentTemplate.disclaimer,
+        };
+        setTemplates(prev => ({ ...prev, [selectedTemplate]: updatedTemplate }));
+        setCurrentTemplateData(updatedTemplate);
+        
+        setSuccess("Email template saved successfully!");
+      }
+      
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (err) {
+      console.error("Error saving template:", err);
+      setError(err instanceof Error ? err.message : "Failed to save template");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleReset = async () => {
+    if (isMasterTemplate) {
+      // Reset master template settings
+      await fetchMasterTemplateSettings();
+      setSuccess("Master template settings reset!");
+    } else {
+      try {
+        setSaving(true);
+        const response = await resetEmailTemplate(selectedTemplate);
+        const template = response.data;
+        const templateData = {
+          subject: template.subject,
+          showSignature: template.showSignature,
+          ...template.body,
+        };
+        setTemplates(prev => ({ ...prev, [selectedTemplate]: templateData }));
+        setCurrentTemplateData(templateData);
+        setEmailSubject(template.subject);
+        setShowSignature(template.showSignature);
+        setSuccess("Template reset to default!");
+      } catch (err) {
+        console.error("Error resetting template:", err);
+        setError(err instanceof Error ? err.message : "Failed to reset template");
+      } finally {
+        setSaving(false);
+      }
+    }
+    setTimeout(() => setSuccess(null), 3000);
   };
 
   return (
     <div className="container-fluid p-4" style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif', backgroundColor: '#F5F5F5', minHeight: '100vh' }}>
       {/* Header */}
-      <div className="d-flex align-items-center mb-4">
-        <div className="position-relative me-2">
-          <Mail style={{ color: '#FF8C00', width: '24px', height: '24px' }} />
-          <Settings style={{ color: '#FF8C00', width: '12px', height: '12px', position: 'absolute', bottom: '-2px', right: '-2px' }} />
+      <div className="mb-6 flex items-center">
+        <div className="relative mr-2">
+          <Mail className="h-6 w-6 text-orange-500" />
+          <Settings className="absolute -bottom-0.5 -right-0.5 h-3 w-3 text-orange-500" />
         </div>
-        <h1 className="mb-0 fw-bold" style={{ fontSize: '24px', color: '#000' }}>Customize Emails</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Customize Emails</h1>
       </div>
+
+      {error && (
+        <div className="mb-4 rounded-lg bg-red-50 p-4 flex items-center text-red-800">
+          <AlertCircle className="mr-2 h-5 w-5 shrink-0" />
+          {error}
+        </div>
+      )}
+
+      {success && (
+        <div className="mb-4 rounded-lg bg-green-50 p-4 flex items-center text-green-800">
+          <CheckCircle className="mr-2 h-5 w-5 shrink-0" />
+          {success}
+        </div>
+      )}
+
+      {loading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+        </div>
+      ) : (
 
       <div className="row g-4">
         {/* Left Panel - Email Type Sub-navigation */}
@@ -314,7 +581,7 @@ export default function CustomizeEmailsPage() {
                             name="logoOption"
                             value="assettiger-logo"
                             checked={logoOption === "assettiger-logo"}
-                            onChange={(e) => setLogoOption(e.target.value)}
+                            onChange={(e) => setLogoOption(e.target.value as "assettiger-logo" | "company-logo" | "company-name")}
                             style={{ marginRight: '8px', cursor: 'pointer' }}
                           />
                           <span style={{ fontSize: '14px', color: '#000' }}>AssetExozen Logo</span>
@@ -325,7 +592,7 @@ export default function CustomizeEmailsPage() {
                             name="logoOption"
                             value="company-logo"
                             checked={logoOption === "company-logo"}
-                            onChange={(e) => setLogoOption(e.target.value)}
+                            onChange={(e) => setLogoOption(e.target.value as "assettiger-logo" | "company-logo" | "company-name")}
                             style={{ marginRight: '8px', cursor: 'pointer' }}
                           />
                           <span style={{ fontSize: '14px', color: '#000' }}>Company Logo</span>
@@ -336,7 +603,7 @@ export default function CustomizeEmailsPage() {
                             name="logoOption"
                             value="company-name"
                             checked={logoOption === "company-name"}
-                            onChange={(e) => setLogoOption(e.target.value)}
+                            onChange={(e) => setLogoOption(e.target.value as "assettiger-logo" | "company-logo" | "company-name")}
                             style={{ marginRight: '8px', cursor: 'pointer' }}
                           />
                           <span style={{ fontSize: '14px', color: '#000' }}>Company Name</span>
@@ -470,10 +737,10 @@ export default function CustomizeEmailsPage() {
 
                     {/* Email Content */}
                     <div style={{ fontSize: '14px', color: '#000', lineHeight: '1.6', paddingTop: '60px' }}>
-                      <p className="mb-2">{currentTemplate.body.greeting}</p>
-                      <p className="mb-3">{currentTemplate.body.intro}</p>
-                      {currentTemplate.body.intro2 && (
-                        <p className="mb-3">{currentTemplate.body.intro2}</p>
+                      <p className="mb-2">{currentTemplate.greeting}</p>
+                      <p className="mb-3">{currentTemplate.intro}</p>
+                      {currentTemplate.intro2 && (
+                        <p className="mb-3">{currentTemplate.intro2}</p>
                       )}
                       
                       {/* Table */}
@@ -481,7 +748,7 @@ export default function CustomizeEmailsPage() {
                         <table className="table table-bordered mb-2" style={{ borderColor: '#D0D0D0', fontSize: '14px', width: '100%' }}>
                           <thead>
                             <tr style={{ backgroundColor: '#FFFACD' }}>
-                              {currentTemplate.body.tableColumns.map((column, index) => (
+                              {currentTemplate.tableColumns.map((column: string, index: number) => (
                                 <th key={index} style={{ borderColor: '#D0D0D0', padding: '8px', fontWeight: '500' }}>
                                   {column}
                                 </th>
@@ -490,7 +757,7 @@ export default function CustomizeEmailsPage() {
                           </thead>
                           <tbody>
                             <tr>
-                              {currentTemplate.body.tableColumns.map((column, index) => (
+                              {currentTemplate.tableColumns.map((column: string, index: number) => (
                                 <td key={index} style={{ borderColor: '#D0D0D0', padding: '8px' }}>
                                   {column === "Check-out Date" || column === "Due date" || column === "Reserved Date" || column === "Reserved Until" || column === "Lease Date" || column === "Return Date" ? "01/15/2015" : "Sample"}
                                 </td>
@@ -504,12 +771,12 @@ export default function CustomizeEmailsPage() {
                         </a>
                       </div>
 
-                      {currentTemplate.body.notes && (
-                        <p className="mb-2">{currentTemplate.body.notes}</p>
+                      {currentTemplate.notes && (
+                        <p className="mb-2">{currentTemplate.notes}</p>
                       )}
-                      <p className="mb-2">{currentTemplate.body.closing}</p>
-                      {currentTemplate.body.disclaimer && (
-                        <p className="mb-0">{currentTemplate.body.disclaimer}</p>
+                      <p className="mb-2">{currentTemplate.closing}</p>
+                      {currentTemplate.disclaimer && (
+                        <p className="mb-0">{currentTemplate.disclaimer}</p>
                       )}
                     </div>
                   </div>
@@ -518,43 +785,34 @@ export default function CustomizeEmailsPage() {
                 )}
 
                 {/* Action Buttons */}
-                <div className="d-flex justify-content-end" style={{ gap: '12px' }}>
+                <div className="flex justify-end gap-3">
                   <button
                     type="button"
-                    className="btn"
-                    style={{ 
-                      backgroundColor: '#FFFFFF', 
-                      border: '1px solid #D0D0D0', 
-                      borderRadius: '0', 
-                      padding: '8px 16px',
-                      color: '#000'
-                    }}
+                    className="rounded border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                    onClick={handleReset}
+                    disabled={saving || loading}
                   >
                     Reset
                   </button>
                   <button
                     type="submit"
-                    className="btn text-white"
-                    style={{ 
-                      backgroundColor: '#FF8C00', 
-                      borderRadius: '0', 
-                      padding: '8px 16px',
-                      border: 'none'
-                    }}
+                    className="rounded bg-orange-500 px-4 py-2 text-sm font-medium text-white hover:bg-orange-600 disabled:opacity-50"
+                    disabled={saving || loading}
                   >
-                    Save
+                    {saving ? (
+                      <>
+                        <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      "Save"
+                    )}
                   </button>
                   <button
                     type="button"
-                    className="btn"
+                    className="rounded border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                     onClick={() => window.history.back()}
-                    style={{ 
-                      backgroundColor: '#FFFFFF', 
-                      border: '1px solid #D0D0D0', 
-                      borderRadius: '0', 
-                      padding: '8px 16px',
-                      color: '#000'
-                    }}
+                    disabled={saving || loading}
                   >
                     Cancel
                   </button>
@@ -564,6 +822,7 @@ export default function CustomizeEmailsPage() {
           </form>
         </div>
       </div>
+      )}
 
       {/* Need Help Button */}
       <div className="fixed-bottom position-fixed" style={{ bottom: '24px', right: '24px', zIndex: 1000 }}>

@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scalable Food Delivery System Architecture</title>
+    <style>
+        @media print {
+            @page {
+                size: A4;
+                margin: 2cm;
+            }
+            body {
+                print-color-adjust: exact;
+                -webkit-print-color-adjust: exact;
+            }
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            color: #333;
+        }
+        h1 {
+            color: #2c3e50;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: #34495e;
+            border-bottom: 2px solid #95a5a6;
+            padding-bottom: 5px;
+            margin-top: 30px;
+        }
+        h3 {
+            color: #7f8c8d;
+            margin-top: 20px;
+        }
+        .architecture-box {
+            border: 2px solid #3498db;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            background-color: #ecf0f1;
+        }
+        .flowchart {
+            background-color: #fff;
+            border: 1px solid #ddd;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+        }
+        .decision {
+            background-color: #f39c12;
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            text-align: center;
+            font-weight: bold;
+        }
+        .process {
+            background-color: #3498db;
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            text-align: center;
+            margin: 5px 0;
+        }
+        .success {
+            background-color: #27ae60;
+            color: white;
+        }
+        .error {
+            background-color: #e74c3c;
+            color: white;
+        }
+        code {
+            background-color: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+        pre {
+            background-color: #2c3e50;
+            color: #ecf0f1;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+        }
+        th {
+            background-color: #3498db;
+            color: white;
+        }
+        tr:nth-child(even) {
+            background-color: #f2f2f2;
+        }
+        .arrow {
+            text-align: center;
+            font-size: 24px;
+            color: #3498db;
+            margin: 10px 0;
+        }
+        .note {
+            background-color: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 10px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>Scalable Food Delivery System Architecture</h1>
+    <p><strong>Similar to Zomato / Uber Eats / Swiggy</strong></p>
+    <p><em>For Interview Preparation - System Design</em></p>
+
+    <h2>1. System Overview</h2>
+    <div class="architecture-box">
+        <h3>Core Features</h3>
+        <ul>
+            <li><strong>User Management</strong>: Customers, Restaurants, Delivery Partners</li>
+            <li><strong>Order Management</strong>: Order placement, tracking, fulfillment</li>
+            <li><strong>Payment Processing</strong>: Multiple payment gateways, wallet, COD</li>
+            <li><strong>Real-time Tracking</strong>: GPS-based location tracking</li>
+            <li><strong>Search & Discovery</strong>: Restaurant search, menu browsing, recommendations</li>
+            <li><strong>Notification System</strong>: Push notifications, SMS, Email</li>
+            <li><strong>Analytics & Reporting</strong>: Business intelligence, dashboards</li>
+        </ul>
+    </div>
+
+    <h2>2. High-Level Architecture</h2>
+    <div class="architecture-box">
+        <pre>
+┌─────────────────────────────────────────────────────────┐
+│                    CLIENT LAYER                          │
+├─────────────────────────────────────────────────────────┤
+│  Mobile Apps (iOS/Android)  │  Web App  │  Restaurant  │
+│  Delivery Partner App        │  Admin Dashboard          │
+└─────────────────────────────────────────────────────────┘
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────┐
+│                    API GATEWAY LAYER                     │
+├─────────────────────────────────────────────────────────┤
+│  - Load Balancing                                       │
+│  - Rate Limiting                                        │
+│  - Authentication & Authorization                        │
+│  - Request Routing                                      │
+└─────────────────────────────────────────────────────────┘
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────┐
+│                    MICROSERVICES LAYER                   │
+├─────────────────────────────────────────────────────────┤
+│  User │ Order │ Restaurant │ Payment │ Delivery │      │
+│  Notification │ Search │ Analytics │ Inventory          │
+└─────────────────────────────────────────────────────────┘
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────┐
+│                    MESSAGE QUEUE (Kafka)                 │
+└─────────────────────────────────────────────────────────┘
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────┐
+│                    DATA LAYER                            │
+├─────────────────────────────────────────────────────────┤
+│  PostgreSQL │ Redis │ Elasticsearch │ S3 Storage       │
+└─────────────────────────────────────────────────────────┘
+        </pre>
+    </div>
+
+    <h2>3. Order Placement Flow</h2>
+    <div class="flowchart">
+        <div class="process">START</div>
+        <div class="arrow">▼</div>
+        <div class="process">Customer Opens App</div>
+        <div class="arrow">▼</div>
+        <div class="process">Browse Restaurants</div>
+        <div class="arrow">▼</div>
+        <div class="process">Select Restaurant</div>
+        <div class="arrow">▼</div>
+        <div class="process">View Menu & Add Items</div>
+        <div class="arrow">▼</div>
+        <div class="process">Review Cart</div>
+        <div class="arrow">▼</div>
+        <div class="process">Enter Delivery Address</div>
+        <div class="arrow">▼</div>
+        <div class="process">Select Payment Method</div>
+        <div class="arrow">▼</div>
+        <div class="process">Place Order</div>
+        <div class="arrow">▼</div>
+        <div class="process">Process Payment</div>
+        <div class="arrow">▼</div>
+        <div class="decision">Payment Success?</div>
+        <div style="display: flex; justify-content: space-around; margin: 10px 0;">
+            <div>
+                <div class="process success">Yes</div>
+                <div class="arrow">▼</div>
+                <div class="process">Create Order Record</div>
+                <div class="arrow">▼</div>
+                <div class="process">Notify Restaurant</div>
+                <div class="arrow">▼</div>
+                <div class="process">Send Confirmation</div>
+                <div class="arrow">▼</div>
+                <div class="process">END</div>
+            </div>
+            <div>
+                <div class="process error">No</div>
+                <div class="arrow">▼</div>
+                <div class="process">Show Error</div>
+                <div class="arrow">▼</div>
+                <div class="process">END</div>
+            </div>
+        </div>
+    </div>
+
+    <h2>4. Order Fulfillment Flow</h2>
+    <div class="flowchart">
+        <div class="process">Order Created</div>
+        <div class="arrow">▼</div>
+        <div class="process">Restaurant Receives Notification</div>
+        <div class="arrow">▼</div>
+        <div class="decision">Accept Order?</div>
+        <div style="display: flex; justify-content: space-around; margin: 10px 0;">
+            <div>
+                <div class="process success">Yes</div>
+                <div class="arrow">▼</div>
+                <div class="process">Status: ACCEPTED</div>
+                <div class="arrow">▼</div>
+                <div class="process">Start Preparing</div>
+                <div class="arrow">▼</div>
+                <div class="process">Status: PREPARING</div>
+                <div class="arrow">▼</div>
+                <div class="process">Order Ready</div>
+                <div class="arrow">▼</div>
+                <div class="process">Status: READY</div>
+                <div class="arrow">▼</div>
+                <div class="process">Find Delivery Partner</div>
+                <div class="arrow">▼</div>
+                <div class="process">Assign Partner</div>
+                <div class="arrow">▼</div>
+                <div class="process">Status: ASSIGNED</div>
+                <div class="arrow">▼</div>
+                <div class="process">Partner Picks Up</div>
+                <div class="arrow">▼</div>
+                <div class="process">Status: PICKED</div>
+                <div class="arrow">▼</div>
+                <div class="process">Real-time Tracking</div>
+                <div class="arrow">▼</div>
+                <div class="process">Status: OUT_FOR_DELIVERY</div>
+                <div class="arrow">▼</div>
+                <div class="process">Order Delivered</div>
+                <div class="arrow">▼</div>
+                <div class="process">Status: DELIVERED</div>
+                <div class="arrow">▼</div>
+                <div class="process">Request Rating</div>
+                <div class="arrow">▼</div>
+                <div class="process">END</div>
+            </div>
+            <div>
+                <div class="process error">No</div>
+                <div class="arrow">▼</div>
+                <div class="process">Cancel Order</div>
+                <div class="arrow">▼</div>
+                <div class="process">Refund Payment</div>
+                <div class="arrow">▼</div>
+                <div class="process">END</div>
+            </div>
+        </div>
+    </div>
+
+    <h2>5. Payment Processing Flow</h2>
+    <div class="flowchart">
+        <div class="process">Payment Request</div>
+        <div class="arrow">▼</div>
+        <div class="process">Validate Payment Details</div>
+        <div class="arrow">▼</div>
+        <div class="decision">Valid?</div>
+        <div style="display: flex; justify-content: space-around; margin: 10px 0;">
+            <div>
+                <div class="process success">Yes</div>
+                <div class="arrow">▼</div>
+                <div class="process">Check Payment Method</div>
+                <div class="arrow">▼</div>
+                <div class="decision">Method Type?</div>
+                <div style="display: flex; justify-content: space-around; margin: 10px 0;">
+                    <div>
+                        <div class="process">Online Payment</div>
+                        <div class="arrow">▼</div>
+                        <div class="process">Payment Gateway</div>
+                        <div class="arrow">▼</div>
+                        <div class="decision">Success?</div>
+                        <div style="display: flex; justify-content: space-around;">
+                            <div>
+                                <div class="process success">Yes</div>
+                                <div class="arrow">▼</div>
+                                <div class="process">Update Transaction</div>
+                                <div class="arrow">▼</div>
+                                <div class="process">END</div>
+                            </div>
+                            <div>
+                                <div class="process error">No</div>
+                                <div class="arrow">▼</div>
+                                <div class="process">Retry / Fail</div>
+                                <div class="arrow">▼</div>
+                                <div class="process">END</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="process">COD/Wallet</div>
+                        <div class="arrow">▼</div>
+                        <div class="process">Process Locally</div>
+                        <div class="arrow">▼</div>
+                        <div class="process">Success</div>
+                        <div class="arrow">▼</div>
+                        <div class="process">END</div>
+                    </div>
+                </div>
+            </div>
+            <div>
+                <div class="process error">No</div>
+                <div class="arrow">▼</div>
+                <div class="process">Return Error</div>
+                <div class="arrow">▼</div>
+                <div class="process">END</div>
+            </div>
+        </div>
+    </div>
+
+    <h2>6. Microservices Architecture</h2>
+    <table>
+        <tr>
+            <th>Service</th>
+            <th>Responsibilities</th>
+            <th>Database</th>
+            <th>Technology</th>
+        </tr>
+        <tr>
+            <td>User Service</td>
+            <td>Authentication, Profiles, RBAC</td>
+            <td>PostgreSQL + Redis</td>
+            <td>Node.js / Go</td>
+        </tr>
+        <tr>
+            <td>Order Service</td>
+            <td>Order lifecycle, Status tracking</td>
+            <td>PostgreSQL + Kafka</td>
+            <td>Node.js / Java</td>
+        </tr>
+        <tr>
+            <td>Restaurant Service</td>
+            <td>Restaurant & Menu management</td>
+            <td>PostgreSQL + Redis</td>
+            <td>Node.js / Python</td>
+        </tr>
+        <tr>
+            <td>Payment Service</td>
+            <td>Payment processing, Transactions</td>
+            <td>PostgreSQL</td>
+            <td>Java / Go</td>
+        </tr>
+        <tr>
+            <td>Delivery Service</td>
+            <td>Partner assignment, Tracking</td>
+            <td>PostgreSQL + WebSocket</td>
+            <td>Node.js / Go</td>
+        </tr>
+        <tr>
+            <td>Notification Service</td>
+            <td>Push, SMS, Email notifications</td>
+            <td>Kafka (events)</td>
+            <td>Node.js / Python</td>
+        </tr>
+        <tr>
+            <td>Search Service</td>
+            <td>Restaurant & Menu search</td>
+            <td>Elasticsearch</td>
+            <td>Java / Python</td>
+        </tr>
+        <tr>
+            <td>Analytics Service</td>
+            <td>Real-time analytics, BI</td>
+            <td>InfluxDB + BigQuery</td>
+            <td>Python / Java</td>
+        </tr>
+    </table>
+
+    <h2>7. Scalability Patterns</h2>
+    <div class="architecture-box">
+        <h3>Horizontal Scaling</h3>
+        <ul>
+            <li>Stateless microservices</li>
+            <li>Load balancing across instances</li>
+            <li>Auto-scaling based on metrics</li>
+        </ul>
+        
+        <h3>Database Scaling</h3>
+        <ul>
+            <li>Read replicas for read-heavy operations</li>
+            <li>Sharding by region/city</li>
+            <li>Redis caching for hot data</li>
+            <li>CDN for static content</li>
+        </ul>
+        
+        <h3>Message Queue</h3>
+        <ul>
+            <li>Kafka topics with partitions</li>
+            <li>Consumer groups for parallel processing</li>
+            <li>Dead letter queue for failed messages</li>
+        </ul>
+    </div>
+
+    <h2>8. Technology Stack</h2>
+    <table>
+        <tr>
+            <th>Layer</th>
+            <th>Technologies</th>
+        </tr>
+        <tr>
+            <td>Frontend</td>
+            <td>React Native, React.js, Next.js</td>
+        </tr>
+        <tr>
+            <td>API Gateway</td>
+            <td>Kong, AWS API Gateway, NGINX</td>
+        </tr>
+        <tr>
+            <td>Backend</td>
+            <td>Node.js, Go, Java Spring Boot</td>
+        </tr>
+        <tr>
+            <td>Message Queue</td>
+            <td>Apache Kafka, RabbitMQ, AWS SQS</td>
+        </tr>
+        <tr>
+            <td>Databases</td>
+            <td>PostgreSQL, Redis, Elasticsearch, InfluxDB</td>
+        </tr>
+        <tr>
+            <td>Infrastructure</td>
+            <td>Docker, Kubernetes, AWS/GCP/Azure</td>
+        </tr>
+        <tr>
+            <td>Monitoring</td>
+            <td>Prometheus, Grafana, ELK Stack</td>
+        </tr>
+    </table>
+
+    <h2>9. Key Design Patterns</h2>
+    <div class="architecture-box">
+        <ul>
+            <li><strong>Circuit Breaker</strong>: Prevent cascading failures</li>
+            <li><strong>Retry Pattern</strong>: Exponential backoff for transient failures</li>
+            <li><strong>Saga Pattern</strong>: Distributed transaction management</li>
+            <li><strong>Event-Driven</strong>: Loose coupling, scalability</li>
+            <li><strong>API Gateway</strong>: Single entry point, routing</li>
+            <li><strong>CQRS</strong>: Separate read/write models</li>
+        </ul>
+    </div>
+
+    <h2>10. Interview Talking Points</h2>
+    <div class="note">
+        <h3>Scalability</h3>
+        <ul>
+            <li>Horizontal scaling with stateless services</li>
+            <li>Database scaling through read replicas and sharding</li>
+            <li>Multi-layer caching (Redis, CDN)</li>
+            <li>Message queues for async processing</li>
+        </ul>
+        
+        <h3>Reliability</h3>
+        <ul>
+            <li>99.99% uptime through multi-AZ deployment</li>
+            <li>Circuit breakers prevent cascading failures</li>
+            <li>Automatic failover and health checks</li>
+            <li>Comprehensive monitoring and alerting</li>
+        </ul>
+        
+        <h3>Performance</h3>
+        <ul>
+            <li>Sub-200ms API response times through caching</li>
+            <li>CDN for static content delivery</li>
+            <li>Database query optimization and indexing</li>
+            <li>Load balancing for efficient traffic distribution</li>
+        </ul>
+    </div>
+
+    <div style="page-break-before: always; margin-top: 50px;">
+        <h2>11. Deployment Architecture</h2>
+        <div class="architecture-box">
+            <pre>
+┌─────────────────────────────────────────────────────────┐
+│                    AWS / GCP / Azure                     │
+├─────────────────────────────────────────────────────────┤
+│                                                           │
+│  ┌──────────────────────────────────────────────────┐  │
+│  │              CDN (CloudFront)                     │  │
+│  └──────────────────────────────────────────────────┘  │
+│                        │                                 │
+│                        ▼                                 │
+│  ┌──────────────────────────────────────────────────┐  │
+│  │         Load Balancer (ALB/NLB)                    │  │
+│  └──────────────────────────────────────────────────┘  │
+│                        │                                 │
+│        ┌───────────────┼───────────────┐                │
+│        │               │               │                │
+│        ▼               ▼               ▼                │
+│  ┌─────────┐     ┌─────────┐     ┌─────────┐          │
+│  │ API GW  │     │ API GW  │     │ API GW  │          │
+│  │ (AZ-1)  │     │ (AZ-2)  │     │ (AZ-3)  │          │
+│  └─────────┘     └─────────┘     └─────────┘          │
+│        │               │               │                │
+│        └───────────────┼───────────────┘                │
+│                        │                                 │
+│        ┌───────────────┼───────────────┐                │
+│        │               │               │                │
+│        ▼               ▼               ▼                │
+│  ┌─────────┐     ┌─────────┐     ┌─────────┐          │
+│  │ User    │     │ Order   │     │ Payment │          │
+│  │ Service │     │ Service │     │ Service │          │
+│  │ (K8s)   │     │ (K8s)   │     │ (K8s)   │          │
+│  └─────────┘     └─────────┘     └─────────┘          │
+│        │               │               │                │
+│        └───────────────┼───────────────┘                │
+│                        │                                 │
+│  ┌──────────────────────────────────────────────────┐  │
+│  │         Kafka Cluster (3 Brokers)                 │  │
+│  └──────────────────────────────────────────────────┘  │
+│                        │                                 │
+│        ┌───────────────┼───────────────┐                │
+│        │               │               │                │
+│        ▼               ▼               ▼                │
+│  ┌─────────┐     ┌─────────┐     ┌─────────┐          │
+│  │PostgreSQL│     │  Redis  │     │Elastic  │          │
+│  │(Primary) │     │ Cluster │     │Search   │          │
+│  └─────────┘     └─────────┘     └─────────┘          │
+│        │                                                 │
+│        ▼                                                 │
+│  ┌─────────┐                                            │
+│  │PostgreSQL│                                            │
+│  │(Replicas)│                                            │
+│  └─────────┘                                            │
+│                                                           │
+└─────────────────────────────────────────────────────────┘
+            </pre>
+        </div>
+    </div>
+
+    <div style="margin-top: 50px; padding: 20px; background-color: #f8f9fa; border-radius: 5px;">
+        <h2>How to Use This Document</h2>
+        <ol>
+            <li><strong>For Interview</strong>: Print this page as PDF (Ctrl+P → Save as PDF)</li>
+            <li><strong>For Excalidraw</strong>: Use the flowcharts as reference to draw diagrams</li>
+            <li><strong>For Presentation</strong>: Combine visual diagrams with this documentation</li>
+        </ol>
+        
+        <h3>Print Instructions</h3>
+        <p>Press <strong>Ctrl+P</strong> (or Cmd+P on Mac) and select "Save as PDF" to create a PDF version of this document.</p>
+    </div>
+</body>
+</html>
+

@@ -1,7 +1,41 @@
 "use client";
 
-import { useState } from "react";
-import { Settings, Play, HelpCircle, Award, AlertTriangle, DollarSign, ShoppingCart, Wrench, Trash2, Heart, Plane, Package, TrendingUp, Calendar, BarChart3, PieChart, Table, Edit } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { Settings, Play, Award, AlertTriangle, DollarSign, ShoppingCart, Wrench, Trash2, Heart, Plane, Package, TrendingUp, Calendar, BarChart3, PieChart, Table, Edit, Loader2, CheckCircle, AlertCircle } from "lucide-react";
+import {
+  getDashboardConfiguration,
+  updateDashboardConfiguration,
+  type DashboardWidget as DashboardWidgetType,
+  type DashboardChart as DashboardChartType,
+} from "@/lib/api/dashboard";
+
+// Icon mapping for widgets
+const widgetIconMap: { [key: string]: any } = {
+  "number-of": TrendingUp,
+  "broken": AlertTriangle,
+  "value-of": DollarSign,
+  "available": Package,
+  "sold": ShoppingCart,
+  "checked-out": TrendingUp,
+  "warranty": Award,
+  "lost-missing": AlertTriangle,
+  "net-asset-value": DollarSign,
+  "purchases": ShoppingCart,
+  "under-repair": Wrench,
+  "disposed": Trash2,
+  "donated": Heart,
+  "leased": Plane,
+};
+
+// Icon mapping for charts
+const chartIconMap: { [key: string]: any } = {
+  "reservations": Calendar,
+  "asset-value-category": PieChart,
+  "asset-value-category-selected": BarChart3,
+  "alerts": Calendar,
+  "feeds": Table,
+  "asset-value-dept": BarChart3,
+};
 
 interface Widget {
   id: string;
@@ -20,44 +54,97 @@ interface Chart {
 
 export default function ManageDashboardPage() {
   const [activeTab, setActiveTab] = useState<"widgets" | "charts">("widgets");
-  const [columns, setColumns] = useState(activeTab === "widgets" ? 6 : 3);
-  const [availableWidgets, setAvailableWidgets] = useState<Widget[]>([
-    { id: "warranty", name: "Warranty vs...", icon: Award, color: "#EF4444" },
-    { id: "lost-missing", name: "Lost / Missing", icon: AlertTriangle, color: "#4ADE80" },
-    { id: "net-asset-value", name: "Net Asset Val...", icon: DollarSign, color: "#14B8A6" },
-    { id: "purchases", name: "Purchases in ...", icon: ShoppingCart, color: "#A855F7" },
-    { id: "under-repair", name: "Under Repair", icon: Wrench, color: "#F97316" },
-    { id: "disposed", name: "Disposed", icon: Trash2, color: "#6B7280" },
-    { id: "donated", name: "Donated", icon: Heart, color: "#EAB308" },
-    { id: "leased", name: "Leased", icon: Plane, color: "#FB923C" }
-  ]);
+  const [widgetColumns, setWidgetColumns] = useState(6);
+  const [chartColumns, setChartColumns] = useState(3);
+  const [availableWidgets, setAvailableWidgets] = useState<Widget[]>([]);
+  const [selectedWidgets, setSelectedWidgets] = useState<Widget[]>([]);
+  const [availableCharts, setAvailableCharts] = useState<Chart[]>([]);
+  const [selectedCharts, setSelectedCharts] = useState<Chart[]>([]);
+  const [chartSizes, setChartSizes] = useState<{ [key: string]: number }>({});
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
-  const [selectedWidgets, setSelectedWidgets] = useState<Widget[]>([
-    { id: "number-of", name: "Number of Assets", icon: TrendingUp, color: "#3B82F6" },
-    { id: "broken", name: "Broken", icon: AlertTriangle, color: "#A855F7" },
-    { id: "value-of", name: "Value of Assets", icon: DollarSign, color: "#EF4444" },
-    { id: "available", name: "Available Assets", icon: Package, color: "#22C55E" },
-    { id: "sold", name: "Sold", icon: ShoppingCart, color: "#60A5FA" },
-    { id: "checked-out", name: "Checked-out", icon: TrendingUp, color: "#F87171" }
-  ]);
-
-  const [availableCharts, setAvailableCharts] = useState<Chart[]>([
-    { id: "asset-value-category", name: "Asset Value by Category", type: "pie", icon: PieChart, color: "#3B82F6" },
-    { id: "feeds", name: "Feeds", type: "table", icon: Table, color: "#6B7280" },
-    { id: "asset-value-dept", name: "Asset Value by Department", type: "bar", icon: BarChart3, color: "#2563EB" }
-  ]);
-
-  const [selectedCharts, setSelectedCharts] = useState<Chart[]>([
-    { id: "reservations", name: "Reservations", type: "calendar", icon: Calendar, color: "#22C55E" },
-    { id: "asset-value-category-selected", name: "Asset Value by Category", type: "bar", icon: BarChart3, color: "#3B82F6" },
-    { id: "alerts", name: "ALERTS", type: "calendar", icon: Calendar, color: "#EF4444" }
-  ]);
-
-  const [chartSizes, setChartSizes] = useState<{ [key: string]: number }>({
-    reservations: 1,
-    "asset-value-category-selected": 1,
-    alerts: 1
+  // Helper to convert API widget to local widget with icon
+  const apiWidgetToWidget = (apiWidget: DashboardWidgetType): Widget => ({
+    ...apiWidget,
+    icon: widgetIconMap[apiWidget.id] || Package,
   });
+
+  // Helper to convert API chart to local chart with icon
+  const apiChartToChart = (apiChart: DashboardChartType): Chart => ({
+    ...apiChart,
+    icon: chartIconMap[apiChart.id] || BarChart3,
+  });
+
+  // Fetch dashboard configuration from API
+  const fetchDashboardConfiguration = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      if (typeof window !== "undefined") {
+        const token = localStorage.getItem("authToken") || sessionStorage.getItem("authToken");
+        if (!token) {
+          setError("Please login to access this page");
+          setLoading(false);
+          return;
+        }
+      }
+
+      const response = await getDashboardConfiguration();
+      const config = response.data;
+
+      setWidgetColumns(config.widgetColumns ?? 6);
+      setChartColumns(config.chartColumns ?? 3);
+
+      // Convert API widgets to local widgets with icons
+      const selectedWidgetsWithIcons = (config.selectedWidgets || []).map(apiWidgetToWidget);
+      const availableWidgetsWithIcons = (config.availableWidgets || []).map(apiWidgetToWidget);
+
+      setSelectedWidgets(selectedWidgetsWithIcons);
+      setAvailableWidgets(availableWidgetsWithIcons);
+
+      // Convert API charts to local charts with icons
+      const selectedChartsWithIcons = (config.selectedCharts || []).map(apiChartToChart);
+      const availableChartsWithIcons = (config.availableCharts || []).map(apiChartToChart);
+
+      setSelectedCharts(selectedChartsWithIcons);
+      setAvailableCharts(availableChartsWithIcons);
+
+      // Set chart sizes
+      const sizes: { [key: string]: number } = {};
+      (config.selectedCharts || []).forEach(chart => {
+        if (chart.size) {
+          sizes[chart.id] = chart.size;
+        }
+      });
+      setChartSizes(sizes);
+    } catch (err) {
+      console.error("Error fetching dashboard configuration:", err);
+      // If 404, use defaults (configuration hasn't been set yet)
+      if (err instanceof Error && (err as any).status === 404) {
+        // Set default values
+        setWidgetColumns(6);
+        setChartColumns(3);
+        setSelectedWidgets([]);
+        setAvailableWidgets([]);
+        setSelectedCharts([]);
+        setAvailableCharts([]);
+      } else {
+        setError(err instanceof Error ? err.message : "Failed to fetch dashboard configuration");
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchDashboardConfiguration();
+  }, [fetchDashboardConfiguration]);
+
+  const columns = activeTab === "widgets" ? widgetColumns : chartColumns;
 
   const handleMoveToSelected = (id: string, type: "widget" | "chart") => {
     if (type === "widget") {
@@ -101,75 +188,107 @@ export default function ManageDashboardPage() {
 
   const handleTabChange = (tab: "widgets" | "charts") => {
     setActiveTab(tab);
-    setColumns(tab === "widgets" ? 6 : 3);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleColumnChange = (num: number) => {
+    if (activeTab === "widgets") {
+      setWidgetColumns(num);
+    } else {
+      setChartColumns(num);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log("Dashboard saved", {
-      widgets: selectedWidgets,
-      charts: selectedCharts,
-      columns,
-      chartSizes
-    });
+
+    try {
+      setSaving(true);
+      setError(null);
+      setSuccess(null);
+
+      await updateDashboardConfiguration({
+        widgetColumns,
+        chartColumns,
+        selectedWidgets: selectedWidgets.map((widget, index) => ({
+          id: widget.id,
+          order: index + 1,
+        })),
+        selectedCharts: selectedCharts.map((chart, index) => ({
+          id: chart.id,
+          size: chartSizes[chart.id] || 1,
+          order: index + 1,
+        })),
+      });
+
+      setSuccess("Dashboard configuration saved successfully!");
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (err) {
+      console.error("Error saving dashboard configuration:", err);
+      setError(err instanceof Error ? err.message : "Failed to save dashboard configuration");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const getGridClass = () => {
-    if (activeTab === "widgets") {
-      const colClass = columns === 1 ? "col-12" : columns === 2 ? "col-6" : columns === 3 ? "col-4" : columns === 4 ? "col-3" : "col-2";
-      return `row g-3`;
-    } else {
-      const colClass = columns === 1 ? "col-12" : columns === 2 ? "col-6" : "col-4";
-      return `row g-3`;
-    }
+    return `flex flex-wrap gap-3`;
   };
 
   const getItemColClass = () => {
     if (activeTab === "widgets") {
-      return columns === 1 ? "col-12" : columns === 2 ? "col-6" : columns === 3 ? "col-4" : columns === 4 ? "col-3" : "col-2";
+      const width = widgetColumns === 1 ? "w-full" : widgetColumns === 2 ? "w-[calc(50%-6px)]" : widgetColumns === 3 ? "w-[calc(33.333%-8px)]" : widgetColumns === 4 ? "w-[calc(25%-9px)]" : widgetColumns === 6 ? "w-[calc(16.666%-10px)]" : "w-[calc(50%-6px)]";
+      return width;
     } else {
-      return columns === 1 ? "col-12" : columns === 2 ? "col-6" : "col-4";
+      const width = chartColumns === 1 ? "w-full" : chartColumns === 2 ? "w-[calc(50%-6px)]" : "w-[calc(33.333%-8px)]";
+      return width;
     }
   };
 
   return (
-    <div className="container-fluid p-4" style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif', backgroundColor: '#F5F5F5', minHeight: '100vh' }}>
+    <div className="min-h-screen bg-gray-50 p-4" style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}>
       {/* Header */}
-      <div className="d-flex align-items-center justify-content-between mb-4">
-        <div className="d-flex align-items-center">
-          <Settings className="me-2" style={{ color: '#FF8C00', width: '24px', height: '24px' }} />
-          <h1 className="mb-0 fw-bold" style={{ fontSize: '24px', color: '#000' }}>Manage Dashboard</h1>
+      <div className="mb-6 flex items-center justify-between">
+        <div className="flex items-center">
+          <Settings className="mr-2 h-6 w-6 text-orange-500" />
+          <h1 className="text-2xl font-bold text-gray-900">Manage Dashboard</h1>
         </div>
-        <div className="d-flex align-items-center" style={{ gap: '12px' }}>
+        <div className="flex items-center gap-3">
           <button
             type="button"
             onClick={handleSubmit}
-            className="btn text-white"
-            style={{ backgroundColor: '#FF8C00', borderRadius: '4px', padding: '8px 16px', fontSize: '14px' }}
+            className="rounded bg-orange-500 px-4 py-2 text-sm font-medium text-white hover:bg-orange-600 disabled:opacity-50"
+            disabled={saving || loading}
           >
-            Save changes
+            {saving ? (
+              <>
+                <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              "Save changes"
+            )}
           </button>
           <button
             type="button"
-            className="btn text-white d-flex align-items-center"
-            style={{ backgroundColor: '#28A745', borderRadius: '4px', padding: '8px 16px', fontSize: '14px', gap: '8px' }}
+            className="flex items-center gap-2 rounded bg-green-500 px-4 py-2 text-sm font-medium text-white hover:bg-green-600"
           >
-            <Play style={{ width: '16px', height: '16px' }} />
+            <Play className="h-4 w-4" />
             How it works?
           </button>
-          <div className="d-flex align-items-center ms-3" style={{ gap: '12px' }}>
-            <span style={{ fontSize: '14px', color: '#000', fontWeight: '500' }}>Columns:</span>
-            <div className="d-flex align-items-center" style={{ gap: '12px' }}>
+          <div className="ml-3 flex items-center gap-3">
+            <span className="text-sm font-medium text-gray-900">Columns:</span>
+            <div className="flex items-center gap-3">
               {(activeTab === "widgets" ? [1, 2, 3, 4, 6] : [1, 2, 3]).map((num) => (
-                <label key={num} className="d-flex align-items-center" style={{ cursor: 'pointer' }}>
+                <label key={num} className="flex items-center cursor-pointer">
                   <input
                     type="radio"
                     name="columns"
                     checked={columns === num}
-                    onChange={() => setColumns(num)}
-                    style={{ marginRight: '6px', cursor: 'pointer' }}
+                    onChange={() => handleColumnChange(num)}
+                    className="mr-2 cursor-pointer"
+                    disabled={saving || loading}
                   />
-                  <span style={{ fontSize: '14px', color: '#000' }}>{num}</span>
+                  <span className="text-sm text-gray-900">{num}</span>
                 </label>
               ))}
             </div>
@@ -177,19 +296,29 @@ export default function ManageDashboardPage() {
         </div>
       </div>
 
+      {error && (
+        <div className="mb-4 rounded-lg bg-red-50 p-4 flex items-center text-red-800">
+          <AlertCircle className="mr-2 h-5 w-5 shrink-0" />
+          {error}
+        </div>
+      )}
+
+      {success && (
+        <div className="mb-4 rounded-lg bg-green-50 p-4 flex items-center text-green-800">
+          <CheckCircle className="mr-2 h-5 w-5 shrink-0" />
+          {success}
+        </div>
+      )}
+
       {/* Tabs */}
-      <div className="d-flex align-items-center mb-3" style={{ borderBottom: '2px solid #E0E0E0', gap: '16px' }}>
+      <div className="mb-3 flex items-center border-b-2 border-gray-200 gap-4">
         <button
           type="button"
           onClick={() => handleTabChange("widgets")}
-          className="btn p-0 border-0 bg-transparent"
+          className="border-0 bg-transparent pb-3 text-sm font-medium transition-colors"
           style={{
-            paddingBottom: '12px',
-            fontSize: '14px',
-            fontWeight: '500',
             color: activeTab === "widgets" ? '#000' : '#666',
             borderBottom: activeTab === "widgets" ? '2px solid #FF8C00' : '2px solid transparent',
-            borderRadius: '0',
             marginBottom: '-2px'
           }}
         >
@@ -198,14 +327,10 @@ export default function ManageDashboardPage() {
         <button
           type="button"
           onClick={() => handleTabChange("charts")}
-          className="btn p-0 border-0 bg-transparent"
+          className="border-0 bg-transparent pb-3 text-sm font-medium transition-colors"
           style={{
-            paddingBottom: '12px',
-            fontSize: '14px',
-            fontWeight: '500',
             color: activeTab === "charts" ? '#000' : '#666',
             borderBottom: activeTab === "charts" ? '2px solid #FF8C00' : '2px solid transparent',
-            borderRadius: '0',
             marginBottom: '-2px'
           }}
         >
@@ -214,184 +339,166 @@ export default function ManageDashboardPage() {
       </div>
 
       {/* Instructions */}
-      <p className="text-muted mb-4" style={{ fontSize: '14px', color: '#666' }}>
+      <p className="mb-4 text-sm text-gray-600">
         To activate a {activeTab === "widgets" ? "widget" : "chart"} drag it to the 'Selected {activeTab === "widgets" ? "Widgets" : "Charts"}' section. To deactivate, drag it back.
       </p>
 
-      {/* Main Content */}
-      <div className="row g-4">
-        {/* Available Section */}
-        <div className="col-md-6">
-          <div className="card" style={{ border: '1px solid #E0E0E0', borderRadius: '4px', boxShadow: 'none' }}>
-            <div className="card-body p-4" style={{ backgroundColor: '#FFFFFF' }}>
-              <h5 className="card-title mb-4 fw-semibold" style={{ fontSize: '18px', color: '#000' }}>
-                Available {activeTab === "widgets" ? "Widgets" : "Charts"}
-              </h5>
-              <div className={activeTab === "widgets" ? "row g-3" : "d-flex flex-column"} style={activeTab === "charts" ? { gap: '12px' } : {}}>
-                {activeTab === "widgets" ? (
-                  availableWidgets.map((widget) => {
-                    const Icon = widget.icon;
-                    return (
-                      <div key={widget.id} className="col-6">
-                        <div
-                          onClick={() => handleMoveToSelected(widget.id, "widget")}
-                          className="card position-relative"
-                          style={{ border: '1px solid #E0E0E0', borderRadius: '4px', cursor: 'pointer', padding: '16px' }}
-                        >
-                          <div
-                            className="rounded d-flex align-items-center justify-content-center mb-2"
-                            style={{ width: '40px', height: '40px', backgroundColor: widget.color }}
-                          >
-                            <Icon style={{ width: '20px', height: '20px', color: '#FFFFFF' }} />
-                          </div>
-                          <p className="mb-0" style={{ fontSize: '14px', color: '#000', fontWeight: '500' }}>
-                            {widget.name}
-                          </p>
-                          <Edit
-                            className="position-absolute"
-                            style={{ width: '14px', height: '14px', color: '#999', bottom: '8px', right: '8px' }}
-                          />
-                        </div>
-                      </div>
-                    );
-                  })
-                ) : (
-                  availableCharts.map((chart) => {
-                    const Icon = chart.icon;
-                    return (
-                      <div
-                        key={chart.id}
-                        onClick={() => handleMoveToSelected(chart.id, "chart")}
-                        className="card"
-                        style={{ border: '1px solid #E0E0E0', borderRadius: '4px', cursor: 'pointer', padding: '16px' }}
-                      >
-                        <div className="d-flex align-items-center mb-3" style={{ gap: '12px' }}>
-                          <div
-                            className="rounded d-flex align-items-center justify-content-center"
-                            style={{ width: '40px', height: '40px', backgroundColor: chart.color }}
-                          >
-                            <Icon style={{ width: '20px', height: '20px', color: '#FFFFFF' }} />
-                          </div>
-                          <p className="mb-0" style={{ fontSize: '14px', color: '#000', fontWeight: '500' }}>
-                            {chart.name}
-                          </p>
-                        </div>
-                        <div
-                          className="rounded d-flex align-items-center justify-content-center"
-                          style={{ height: '120px', backgroundColor: '#F5F5F5' }}
-                        >
-                          <Icon style={{ width: '48px', height: '48px', color: '#999' }} />
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-          </div>
+      {loading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
         </div>
-
-        {/* Selected Section */}
-        <div className="col-md-6">
-          <div className="card" style={{ border: '1px solid #E0E0E0', borderRadius: '4px', boxShadow: 'none' }}>
-            <div className="card-body p-4" style={{ backgroundColor: '#FFFFFF' }}>
-              <h5 className="card-title mb-4 fw-semibold" style={{ fontSize: '18px', color: '#000' }}>
-                Selected {activeTab === "widgets" ? "Widgets" : "Charts"}
-              </h5>
-              <div className={getGridClass()}>
-                {activeTab === "widgets" ? (
-                  selectedWidgets.map((widget) => {
-                    const Icon = widget.icon;
-                    return (
-                      <div key={widget.id} className={getItemColClass()}>
-                        <div
-                          onClick={() => handleMoveToAvailable(widget.id, "widget")}
-                          className="card position-relative"
-                          style={{ border: '1px solid #E0E0E0', borderRadius: '4px', cursor: 'pointer', padding: '16px' }}
-                        >
+      ) : (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          {/* Available Section */}
+          <div>
+            <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
+              <div className="p-6">
+                <h5 className="mb-4 text-lg font-semibold text-gray-900">
+                  Available {activeTab === "widgets" ? "Widgets" : "Charts"}
+                </h5>
+                <div className={activeTab === "widgets" ? "grid grid-cols-2 gap-3" : "flex flex-col gap-3"}>
+                  {activeTab === "widgets" ? (
+                    availableWidgets.map((widget) => {
+                      const Icon = widget.icon;
+                      return (
+                        <div key={widget.id}>
                           <div
-                            className="rounded d-flex align-items-center justify-content-center mb-2"
-                            style={{ width: '40px', height: '40px', backgroundColor: widget.color }}
+                            onClick={() => handleMoveToSelected(widget.id, "widget")}
+                            className="relative cursor-pointer rounded border border-gray-200 bg-white p-4 hover:bg-gray-50"
                           >
-                            <Icon style={{ width: '20px', height: '20px', color: '#FFFFFF' }} />
-                          </div>
-                          <p className="mb-0" style={{ fontSize: '14px', color: '#000', fontWeight: '500' }}>
-                            {widget.name}
-                          </p>
-                          <Edit
-                            className="position-absolute"
-                            style={{ width: '14px', height: '14px', color: '#999', bottom: '8px', right: '8px' }}
-                          />
-                        </div>
-                      </div>
-                    );
-                  })
-                ) : (
-                  selectedCharts.map((chart) => {
-                    const Icon = chart.icon;
-                    return (
-                      <div key={chart.id} className={getItemColClass()}>
-                        <div
-                          className="card"
-                          style={{ border: '1px solid #E0E0E0', borderRadius: '4px', padding: '16px' }}
-                        >
-                          <div className="d-flex align-items-center justify-content-between mb-3">
-                            <div className="d-flex align-items-center" style={{ gap: '12px' }}>
-                              <div
-                                className="rounded d-flex align-items-center justify-content-center"
-                                style={{ width: '40px', height: '40px', backgroundColor: chart.color }}
-                              >
-                                <Icon style={{ width: '20px', height: '20px', color: '#FFFFFF' }} />
-                              </div>
-                              <p className="mb-0" style={{ fontSize: '14px', color: '#000', fontWeight: '500' }}>
-                                {chart.name}
-                              </p>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => handleMoveToAvailable(chart.id, "chart")}
-                              className="btn p-0 border-0"
-                              style={{ fontSize: '20px', color: '#999', lineHeight: '1' }}
+                            <div
+                              className="mb-2 flex h-10 w-10 items-center justify-center rounded"
+                              style={{ backgroundColor: widget.color }}
                             >
-                              ×
-                            </button>
-                          </div>
-                          <div
-                            className="rounded d-flex align-items-center justify-content-center mb-3"
-                            style={{ height: '120px', backgroundColor: '#F5F5F5' }}
-                          >
-                            <Icon style={{ width: '48px', height: '48px', color: '#999' }} />
-                          </div>
-                          <div className="d-flex" style={{ gap: '8px' }}>
-                            {[1, 2, 3].map((size) => (
-                              <button
-                                key={size}
-                                type="button"
-                                onClick={() => handleChartSizeChange(chart.id, size)}
-                                className="btn btn-sm"
-                                style={{
-                                  borderRadius: '4px',
-                                  padding: '4px 12px',
-                                  fontSize: '12px',
-                                  backgroundColor: chartSizes[chart.id] === size ? '#FF8C00' : '#F5F5F5',
-                                  color: chartSizes[chart.id] === size ? '#FFFFFF' : '#000',
-                                  border: 'none'
-                                }}
-                              >
-                                {size}x
-                              </button>
-                            ))}
+                              <Icon className="h-5 w-5 text-white" />
+                            </div>
+                            <p className="text-sm font-medium text-gray-900">
+                              {widget.name}
+                            </p>
+                            <Edit className="absolute bottom-2 right-2 h-3.5 w-3.5 text-gray-400" />
                           </div>
                         </div>
-                      </div>
-                    );
-                  })
-                )}
+                      );
+                    })
+                  ) : (
+                    availableCharts.map((chart) => {
+                      const Icon = chart.icon;
+                      return (
+                        <div
+                          key={chart.id}
+                          onClick={() => handleMoveToSelected(chart.id, "chart")}
+                          className="cursor-pointer rounded border border-gray-200 bg-white p-4 hover:bg-gray-50"
+                        >
+                          <div className="mb-3 flex items-center gap-3">
+                            <div
+                              className="flex h-10 w-10 items-center justify-center rounded"
+                              style={{ backgroundColor: chart.color }}
+                            >
+                              <Icon className="h-5 w-5 text-white" />
+                            </div>
+                            <p className="text-sm font-medium text-gray-900">
+                              {chart.name}
+                            </p>
+                          </div>
+                          <div className="flex h-[120px] items-center justify-center rounded bg-gray-50">
+                            <Icon className="h-12 w-12 text-gray-400" />
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Selected Section */}
+          <div>
+            <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
+              <div className="p-6">
+                <h5 className="mb-4 text-lg font-semibold text-gray-900">
+                  Selected {activeTab === "widgets" ? "Widgets" : "Charts"}
+                </h5>
+                <div className={getGridClass()}>
+                  {activeTab === "widgets" ? (
+                    selectedWidgets.map((widget) => {
+                      const Icon = widget.icon;
+                      return (
+                        <div key={widget.id} className={getItemColClass()}>
+                          <div
+                            onClick={() => handleMoveToAvailable(widget.id, "widget")}
+                            className="relative cursor-pointer rounded border border-gray-200 bg-white p-4 hover:bg-gray-50"
+                          >
+                            <div
+                              className="mb-2 flex h-10 w-10 items-center justify-center rounded"
+                              style={{ backgroundColor: widget.color }}
+                            >
+                              <Icon className="h-5 w-5 text-white" />
+                            </div>
+                            <p className="text-sm font-medium text-gray-900">
+                              {widget.name}
+                            </p>
+                            <Edit className="absolute bottom-2 right-2 h-3.5 w-3.5 text-gray-400" />
+                          </div>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    selectedCharts.map((chart) => {
+                      const Icon = chart.icon;
+                      return (
+                        <div key={chart.id} className={getItemColClass()}>
+                          <div className="rounded border border-gray-200 bg-white p-4">
+                            <div className="mb-3 flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                <div
+                                  className="flex h-10 w-10 items-center justify-center rounded"
+                                  style={{ backgroundColor: chart.color }}
+                                >
+                                  <Icon className="h-5 w-5 text-white" />
+                                </div>
+                                <p className="text-sm font-medium text-gray-900">
+                                  {chart.name}
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleMoveToAvailable(chart.id, "chart")}
+                                className="text-xl leading-none text-gray-400 hover:text-gray-600"
+                              >
+                                ×
+                              </button>
+                            </div>
+                            <div className="mb-3 flex h-[120px] items-center justify-center rounded bg-gray-50">
+                              <Icon className="h-12 w-12 text-gray-400" />
+                            </div>
+                            <div className="flex gap-2">
+                              {[1, 2, 3].map((size) => (
+                                <button
+                                  key={size}
+                                  type="button"
+                                  onClick={() => handleChartSizeChange(chart.id, size)}
+                                  className="rounded px-3 py-1 text-xs font-medium transition-colors"
+                                  style={{
+                                    backgroundColor: chartSizes[chart.id] === size ? '#FF8C00' : '#F5F5F5',
+                                    color: chartSizes[chart.id] === size ? '#FFFFFF' : '#000',
+                                  }}
+                                >
+                                  {size}x
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

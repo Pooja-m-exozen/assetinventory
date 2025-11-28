@@ -16,8 +16,21 @@ import {
   X,
   Calendar,
   Trash2,
+  Loader2,
+  AlertCircle,
+  CheckCircle,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import {
+  getWarrantiesList,
+  getWarranty,
+  createWarranty,
+  updateWarranty,
+  deleteWarranty,
+  exportWarrantiesList,
+  importWarranties,
+  type ListWarranty,
+} from "@/lib/api/lists";
 
 interface Warranty {
   id: string;
@@ -29,33 +42,80 @@ interface Warranty {
   notes: string;
 }
 
-const dummyWarranties: Warranty[] = [
-  {
-    id: "1",
-    active: false,
-    assetTagId: "EXO/2025/CGB-WTP-01",
-    description: "Water Treatment Plant 200 KLD",
-    lengthMonths: 6,
-    expires: "11/19/2025",
-    notes: "",
-  },
-];
-
 export default function ListOfWarrantiesPage() {
+  const [warranties, setWarranties] = useState<ListWarranty[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [sortColumn, setSortColumn] = useState<string | null>("expires");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
-  const [filter, setFilter] = useState("all");
+  const [filter, setFilter] = useState<"all" | "active" | "expired">("all");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<"edit" | "view">("edit");
   const [activeTab, setActiveTab] = useState<"warranty" | "asset">("warranty");
-  const [selectedWarranty, setSelectedWarranty] = useState<Warranty | null>(null);
+  const [selectedWarranty, setSelectedWarranty] = useState<ListWarranty | null>(null);
   const [formData, setFormData] = useState({
     lengthMonths: "",
     expirationDate: "",
     notes: "",
   });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [pagination, setPagination] = useState({
+    totalRecords: 0,
+    totalPages: 0,
+    startRecord: 0,
+    endRecord: 0,
+  });
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Fetch warranties from API
+  const fetchWarranties = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      if (typeof window !== "undefined") {
+        const token = localStorage.getItem("authToken") || sessionStorage.getItem("authToken");
+        if (!token) {
+          setError("Please login to access this page");
+          setLoading(false);
+          return;
+        }
+      }
+
+      const response = await getWarrantiesList(
+        currentPage,
+        itemsPerPage,
+        sortColumn || undefined,
+        sortDirection,
+        filter,
+        undefined // search query - can be added later
+      );
+
+      setWarranties(response.data);
+      setPagination(response.pagination);
+    } catch (err) {
+      console.error("Error fetching warranties:", err);
+      setError(err instanceof Error ? err.message : "Failed to fetch warranties");
+      setWarranties([]);
+      setPagination({
+        totalRecords: 0,
+        totalPages: 0,
+        startRecord: 0,
+        endRecord: 0,
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [currentPage, itemsPerPage, sortColumn, sortDirection, filter]);
+
+  useEffect(() => {
+    fetchWarranties();
+  }, [fetchWarranties]);
 
   const handleSort = (column: string) => {
     if (sortColumn === column) {
@@ -64,47 +124,124 @@ export default function ListOfWarrantiesPage() {
       setSortColumn(column);
       setSortDirection("asc");
     }
+    setCurrentPage(1);
   };
 
-  const totalRecords = dummyWarranties.length;
-  const startRecord = (currentPage - 1) * itemsPerPage + 1;
-  const endRecord = Math.min(currentPage * itemsPerPage, totalRecords);
-  const totalPages = Math.ceil(totalRecords / itemsPerPage);
-  const paginatedWarranties = dummyWarranties.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
-  );
+  const handlePageChange = (newPage: number) => {
+    setCurrentPage(newPage);
+  };
 
-  const handleExportToExcel = () => {
-    console.log("Exporting to Excel...");
+  const handleItemsPerPageChange = (newLimit: number) => {
+    setItemsPerPage(newLimit);
+    setCurrentPage(1);
+  };
+
+  const handleExportToExcel = async () => {
+    try {
+      setExporting(true);
+      setError(null);
+
+      const blob = await exportWarrantiesList(
+        "csv",
+        sortColumn || undefined,
+        sortDirection,
+        filter,
+        undefined
+      );
+
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `warranties_export_${new Date().toISOString().split("T")[0]}.csv`;
+      link.style.visibility = "hidden";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Error exporting warranties:", err);
+      setError(err instanceof Error ? err.message : "Failed to export warranties");
+    } finally {
+      setExporting(false);
+    }
   };
 
   const handleImportWarranties = () => {
-    console.log("Importing warranties...");
+    fileInputRef.current?.click();
   };
 
-  const handleEdit = (warranty: Warranty) => {
-    setSelectedWarranty(warranty);
-    setModalMode("edit");
-    // Convert date from MM/dd/yyyy to yyyy-MM-dd for date input
-    const convertDate = (dateStr: string) => {
-      if (!dateStr) return "";
-      const [month, day, year] = dateStr.split("/");
-      return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
-    };
-    setFormData({
-      lengthMonths: warranty.lengthMonths.toString(),
-      expirationDate: convertDate(warranty.expires),
-      notes: warranty.notes || "",
-    });
-    setIsModalOpen(true);
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setImporting(true);
+      setError(null);
+      setSuccess(null);
+
+      const result = await importWarranties(file);
+
+      setSuccess(`Import completed: ${result.importedCount} imported, ${result.failedCount} failed`);
+      setTimeout(() => setSuccess(null), 5000);
+
+      if (result.errors && result.errors.length > 0) {
+        console.error("Import errors:", result.errors);
+        setError(`Some rows failed: ${result.errors.map(e => `Row ${e.row}: ${e.error}`).join(", ")}`);
+      }
+
+      // Refresh the list
+      fetchWarranties();
+    } catch (err) {
+      console.error("Error importing warranties:", err);
+      setError(err instanceof Error ? err.message : "Failed to import warranties");
+    } finally {
+      setImporting(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
   };
 
-  const handleView = (warranty: Warranty) => {
-    setSelectedWarranty(warranty);
-    setModalMode("view");
-    setActiveTab("warranty");
-    setIsModalOpen(true);
+  const convertDate = (dateStr: string) => {
+    if (!dateStr) return "";
+    const [month, day, year] = dateStr.split("/");
+    return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  };
+
+  const handleEdit = async (warranty: ListWarranty) => {
+    try {
+      // Fetch full warranty details
+      const response = await getWarranty(warranty.id);
+      const fullWarranty = response.data;
+      
+      setSelectedWarranty(fullWarranty);
+      setModalMode("edit");
+      setFormData({
+        lengthMonths: fullWarranty.lengthMonths.toString(),
+        expirationDate: convertDate(fullWarranty.expires),
+        notes: fullWarranty.notes || "",
+      });
+      setIsModalOpen(true);
+    } catch (err) {
+      console.error("Error fetching warranty:", err);
+      setError(err instanceof Error ? err.message : "Failed to fetch warranty details");
+    }
+  };
+
+  const handleView = async (warranty: ListWarranty) => {
+    try {
+      // Fetch full warranty details
+      const response = await getWarranty(warranty.id);
+      const fullWarranty = response.data;
+      
+      setSelectedWarranty(fullWarranty);
+      setModalMode("view");
+      setActiveTab("warranty");
+      setIsModalOpen(true);
+    } catch (err) {
+      console.error("Error fetching warranty:", err);
+      setError(err instanceof Error ? err.message : "Failed to fetch warranty details");
+    }
   };
 
   const handleCloseModal = () => {
@@ -118,17 +255,58 @@ export default function ListOfWarrantiesPage() {
     setActiveTab("warranty");
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Handle form submission
-    console.log("Form submitted:", formData);
-    handleCloseModal();
+    
+    if (!selectedWarranty) return;
+
+    try {
+      setSaving(true);
+      setError(null);
+      setSuccess(null);
+
+      await updateWarranty(selectedWarranty.id, {
+        lengthMonths: formData.lengthMonths ? parseInt(formData.lengthMonths) : undefined,
+        expirationDate: formData.expirationDate || undefined,
+        notes: formData.notes || undefined,
+      });
+
+      setSuccess("Warranty updated successfully!");
+      setTimeout(() => setSuccess(null), 3000);
+      handleCloseModal();
+      fetchWarranties();
+    } catch (err) {
+      console.error("Error updating warranty:", err);
+      setError(err instanceof Error ? err.message : "Failed to update warranty");
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleDelete = () => {
-    // Handle delete
-    console.log("Deleting warranty:", selectedWarranty?.id);
-    handleCloseModal();
+  const handleDelete = async () => {
+    if (!selectedWarranty) return;
+
+    if (!confirm("Are you sure you want to delete this warranty?")) {
+      return;
+    }
+
+    try {
+      setSaving(true);
+      setError(null);
+      setSuccess(null);
+
+      await deleteWarranty(selectedWarranty.id);
+
+      setSuccess("Warranty deleted successfully!");
+      setTimeout(() => setSuccess(null), 3000);
+      handleCloseModal();
+      fetchWarranties();
+    } catch (err) {
+      console.error("Error deleting warranty:", err);
+      setError(err instanceof Error ? err.message : "Failed to delete warranty");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -278,8 +456,16 @@ export default function ListOfWarrantiesPage() {
                     type="submit"
                     className="bg-yellow-500 hover:bg-yellow-600 text-white"
                     style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}
+                    disabled={saving}
                   >
-                    Submit
+                    {saving ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      "Submit"
+                    )}
                   </Button>
                   <Button
                     type="button"
@@ -560,18 +746,45 @@ export default function ListOfWarrantiesPage() {
                 onClick={handleExportToExcel}
                 className="flex items-center gap-2 border-gray-300"
                 style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}
+                disabled={exporting || loading}
               >
-                <FileSpreadsheet className="h-4 w-4" />
-                <span>Export to Excel</span>
+                {exporting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Exporting...
+                  </>
+                ) : (
+                  <>
+                    <FileSpreadsheet className="h-4 w-4" />
+                    <span>Export to Excel</span>
+                  </>
+                )}
               </Button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv,.xlsx,.xls"
+                onChange={handleFileChange}
+                className="hidden"
+              />
               <Button
                 variant="outline"
                 onClick={handleImportWarranties}
                 className="flex items-center gap-2 border-gray-300"
                 style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}
+                disabled={importing || loading}
               >
-                <Upload className="h-4 w-4" />
-                <span>Import Warranties</span>
+                {importing ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Importing...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="h-4 w-4" />
+                    <span>Import Warranties</span>
+                  </>
+                )}
               </Button>
               <Button
                 variant="outline"
@@ -582,13 +795,25 @@ export default function ListOfWarrantiesPage() {
                 <span>Setup Columns</span>
               </Button>
               <div className="flex items-center gap-1">
-                <Button variant="ghost" size="icon" className="h-8 w-8">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  disabled={currentPage <= 1 || loading}
+                >
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
                 <Button variant="ghost" size="sm" className="h-8 w-8 bg-yellow-500 text-gray-900 hover:bg-yellow-600">
                   {currentPage}
                 </Button>
-                <Button variant="ghost" size="icon" className="h-8 w-8">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  disabled={currentPage >= pagination.totalPages || loading}
+                >
                   <ChevronRight className="h-4 w-4" />
                 </Button>
               </div>
@@ -599,12 +824,10 @@ export default function ListOfWarrantiesPage() {
           <div className="flex items-center gap-2">
             <select
               value={itemsPerPage}
-              onChange={(e) => {
-                setItemsPerPage(Number(e.target.value));
-                setCurrentPage(1);
-              }}
+              onChange={(e) => handleItemsPerPageChange(Number(e.target.value))}
               className="px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm"
               style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}
+              disabled={loading}
             >
               <option value={10}>10</option>
               <option value={25}>25</option>
@@ -620,6 +843,20 @@ export default function ListOfWarrantiesPage() {
 
       {/* Main Content - Table */}
       <div className="p-6">
+        {error && (
+          <div className="mb-4 rounded-lg bg-red-50 p-4 flex items-center text-red-800">
+            <AlertCircle className="mr-2 h-5 w-5 shrink-0" />
+            {error}
+          </div>
+        )}
+
+        {success && (
+          <div className="mb-4 rounded-lg bg-green-50 p-4 flex items-center text-green-800">
+            <CheckCircle className="mr-2 h-5 w-5 shrink-0" />
+            {success}
+          </div>
+        )}
+
         {/* Instructional Text */}
         <p className="text-sm text-gray-600 dark:text-gray-400 mb-4" style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}>
           Link warranties to specific assets by choosing View next to the warranty you wish to edit. Then, add the required information.
@@ -629,9 +866,13 @@ export default function ListOfWarrantiesPage() {
         <div className="mb-4">
           <select
             value={filter}
-            onChange={(e) => setFilter(e.target.value)}
+            onChange={(e) => {
+              setFilter(e.target.value as "all" | "active" | "expired");
+              setCurrentPage(1);
+            }}
             className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400"
             style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}
+            disabled={loading}
           >
             <option value="all">All Warranties</option>
             <option value="active">Active</option>
@@ -639,7 +880,12 @@ export default function ListOfWarrantiesPage() {
           </select>
         </div>
 
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+          </div>
+        ) : (
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-yellow-50 dark:bg-yellow-900/20 border-b border-gray-200 dark:border-gray-700">
@@ -711,7 +957,14 @@ export default function ListOfWarrantiesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                {paginatedWarranties.map((warranty) => (
+                {warranties.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-8 text-center text-gray-500">
+                      No warranties found
+                    </td>
+                  </tr>
+                ) : (
+                  warranties.map((warranty) => (
                   <tr key={warranty.id} className="hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors">
                     <td className="px-4 py-4">
                       {warranty.active ? (
@@ -786,7 +1039,8 @@ export default function ListOfWarrantiesPage() {
                       </div>
                     </td>
                   </tr>
-                ))}
+                  ))
+                )}
               </tbody>
             </table>
           </div>
@@ -794,21 +1048,34 @@ export default function ListOfWarrantiesPage() {
           {/* Table Footer */}
           <div className="bg-gray-50 dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 px-6 py-4 flex items-center justify-between">
             <div className="text-sm text-gray-600 dark:text-gray-400" style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}>
-              Showing {startRecord} to {endRecord} of {totalRecords} records
+              Showing {pagination.startRecord} to {pagination.endRecord} of {pagination.totalRecords} records
             </div>
             <div className="flex items-center gap-1">
-              <Button variant="ghost" size="icon" className="h-8 w-8">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => handlePageChange(currentPage - 1)}
+                disabled={currentPage <= 1 || loading}
+              >
                 <ChevronLeft className="h-4 w-4" />
               </Button>
               <Button variant="ghost" size="sm" className="h-8 w-8 bg-yellow-500 text-gray-900 hover:bg-yellow-600">
                 {currentPage}
               </Button>
-              <Button variant="ghost" size="icon" className="h-8 w-8">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => handlePageChange(currentPage + 1)}
+                disabled={currentPage >= pagination.totalPages || loading}
+              >
                 <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
           </div>
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );

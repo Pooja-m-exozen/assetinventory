@@ -1,211 +1,225 @@
 "use client";
 
-import { useState } from "react";
-import { Calendar, UserCheck, Send, ThumbsDown, Wrench, Link2, Trash2, Heart } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { Calendar, UserCheck, Send, ThumbsDown, Wrench, Link2, Trash2, Heart, Loader2, AlertCircle } from "lucide-react";
+import {
+  getEvents,
+  updateEvent,
+  type Event as EventType,
+} from "@/lib/api/events";
 
-interface Event {
-  id: string;
-  name: string;
-  icon: any;
-  enabled: boolean;
-  description: string;
-  setupButton: string;
-  customizeButton: string;
-  secondarySetupButton?: string;
-  secondaryCustomizeButton?: string;
-}
+// Icon mapping for events
+const eventIcons: { [key: string]: any } = {
+  "check-out": UserCheck,
+  "lease": Send,
+  "lost-found": ThumbsDown,
+  "repair": Wrench,
+  "broken": Link2,
+  "dispose": Trash2,
+  "donate": Heart,
+};
 
 export default function EventsPage() {
-  const [events, setEvents] = useState<Event[]>([
-    {
-      id: "check-out",
-      name: "Check-out assets",
-      icon: UserCheck,
-      enabled: true,
-      description: "Assets are 'checked out' or 'assigned to' individuals. Enter individuals in 'Advanced > Persons/Employees' table.",
-      setupButton: "Setup 'Check out'",
-      customizeButton: "Customize Form",
-      secondarySetupButton: "Setup 'Check in'",
-      secondaryCustomizeButton: "Customize Form",
-    },
-    {
-      id: "lease",
-      name: "Lease assets",
-      icon: Send,
-      enabled: true,
-      description: "Assets are 'leased' or 'rented/loaned' to customers. Maintain a list of customers in the 'Advanced > Customers' table.",
-      setupButton: "Setup 'Lease'",
-      customizeButton: "Customize Form",
-      secondarySetupButton: "Setup 'Lease return'",
-      secondaryCustomizeButton: "Customize Form",
-    },
-    {
-      id: "lost-found",
-      name: "Lost/Found assets",
-      icon: ThumbsDown,
-      enabled: true,
-      description: "",
-      setupButton: "Setup 'Lost / Missing'",
-      customizeButton: "Customize Form",
-      secondarySetupButton: "Setup 'Found'",
-      secondaryCustomizeButton: "Customize Form",
-    },
-    {
-      id: "repair",
-      name: "Repair assets",
-      icon: Wrench,
-      enabled: true,
-      description: "",
-      setupButton: "Setup 'Repair'",
-      customizeButton: "Customize Form",
-    },
-    {
-      id: "broken",
-      name: "Broken assets",
-      icon: Link2,
-      enabled: true,
-      description: "",
-      setupButton: "Setup 'Broken'",
-      customizeButton: "Customize Form",
-    },
-    {
-      id: "dispose",
-      name: "Dispose assets",
-      icon: Trash2,
-      enabled: true,
-      description: "",
-      setupButton: "Setup 'Dispose'",
-      customizeButton: "Customize Form",
-    },
-    {
-      id: "donate",
-      name: "Donate assets",
-      icon: Heart,
-      enabled: true,
-      description: "",
-      setupButton: "Setup 'Donate'",
-      customizeButton: "Customize Form",
-    },
-  ]);
+  const [events, setEvents] = useState<EventType[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [updatingIds, setUpdatingIds] = useState<Set<string>>(new Set());
 
-  const handleEventToggle = (id: string, enabled: boolean) => {
-    setEvents(events.map((event) => (event.id === id ? { ...event, enabled } : event)));
+  // Fetch events from API
+  const fetchEvents = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      if (typeof window !== "undefined") {
+        const token = localStorage.getItem("authToken") || sessionStorage.getItem("authToken");
+        if (!token) {
+          setError("Please login to access this page");
+          setEvents([]);
+          setLoading(false);
+          return;
+        }
+      }
+
+      const response = await getEvents();
+      setEvents(response.data || []);
+    } catch (err) {
+      console.error("Error fetching events:", err);
+      setError(err instanceof Error ? err.message : "Failed to fetch events");
+      setEvents([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchEvents();
+  }, [fetchEvents]);
+
+  const handleEventToggle = async (id: string, enabled: boolean) => {
+    try {
+      setUpdatingIds(prev => new Set(prev).add(id));
+      setError(null);
+
+      const updatedEvent = await updateEvent(id, { enabled });
+      
+      // Update the event in the local state
+      setEvents(events.map((event) => 
+        event.id === id ? updatedEvent.data : event
+      ));
+    } catch (err) {
+      console.error("Error updating event:", err);
+      setError(err instanceof Error ? err.message : "Failed to update event");
+      // Revert the change on error
+      await fetchEvents();
+    } finally {
+      setUpdatingIds(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(id);
+        return newSet;
+      });
+    }
   };
 
   return (
-    <div className="container-fluid p-4" style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif', backgroundColor: '#F5F5F5', minHeight: '100vh' }}>
+    <div className="min-h-screen bg-gray-50 p-4" style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}>
       {/* Header */}
-      <div className="d-flex align-items-center mb-4">
-        <Calendar className="me-2" style={{ color: '#FF8C00', width: '24px', height: '24px' }} />
-        <h1 className="mb-0 fw-bold" style={{ fontSize: '24px', color: '#000' }}>Events</h1>
+      <div className="mb-6 flex items-center">
+        <Calendar className="mr-2 h-6 w-6 text-orange-500" />
+        <h1 className="text-2xl font-bold text-gray-900">Events</h1>
       </div>
 
+      {error && (
+        <div className="mb-4 rounded-lg bg-red-50 p-4 flex items-center text-red-800">
+          <AlertCircle className="mr-2 h-5 w-5 shrink-0" />
+          {error}
+        </div>
+      )}
+
       {/* Asset-related Events Section */}
-      <div className="card mb-4" style={{ border: '1px solid #E0E0E0', borderRadius: '4px', boxShadow: 'none' }}>
-        <div className="card-body p-4" style={{ backgroundColor: '#FFFFFF' }}>
-          <div className="d-flex align-items-start mb-4">
-            <div className="me-3" style={{ padding: '12px', backgroundColor: '#FFF5E6', borderRadius: '4px' }}>
-              <Calendar style={{ color: '#FF8C00', width: '24px', height: '24px' }} />
+      <div className="mb-4 rounded-lg border border-gray-200 bg-white shadow-sm">
+        <div className="p-6">
+          <div className="mb-4 flex items-start">
+            <div className="mr-3 rounded bg-orange-50 p-3">
+              <Calendar className="h-6 w-6 text-orange-500" />
             </div>
-            <div className="flex-grow-1">
-              <h5 className="card-title mb-2 fw-semibold" style={{ fontSize: '18px', color: '#000' }}>Asset-related Events</h5>
-              <p className="text-muted mb-0" style={{ fontSize: '14px', color: '#666', lineHeight: '1.6' }}>
+            <div className="grow">
+              <h5 className="mb-2 text-lg font-semibold text-gray-900">Asset-related Events</h5>
+              <p className="text-sm text-gray-600 leading-relaxed">
                 Do you want to register these events for the assets?
               </p>
             </div>
           </div>
 
-          <div className="space-y-4">
-            {events.map((event) => {
-              const Icon = event.icon;
-              return (
-                <div key={event.id} className="border-bottom pb-4 mb-4" style={{ borderBottom: '1px solid #E0E0E0' }}>
-                  <div className="d-flex align-items-start gap-3">
-                    {/* Icon */}
-                    <div className="mt-1" style={{ padding: '8px', backgroundColor: '#F8F9FA', borderRadius: '4px' }}>
-                      <Icon style={{ color: '#666', width: '20px', height: '20px' }} />
-                    </div>
-
-                    {/* Content */}
-                    <div className="flex-grow-1">
-                      <div className="d-flex align-items-center gap-3 mb-3 flex-wrap">
-                        <h6 className="mb-0 fw-semibold" style={{ fontSize: '16px', color: '#000' }}>
-                          {event.name}:
-                        </h6>
-
-                        {/* Enable/Disable Radio Buttons */}
-                        <div className="d-flex align-items-center gap-4">
-                          <label className="d-flex align-items-center" style={{ cursor: 'pointer' }}>
-                            <input
-                              type="radio"
-                              name={`enabled-${event.id}`}
-                              checked={event.enabled}
-                              onChange={() => handleEventToggle(event.id, true)}
-                              style={{ marginRight: '6px', cursor: 'pointer' }}
-                            />
-                            <span style={{ fontSize: '14px', color: '#000' }}>Yes</span>
-                          </label>
-                          <label className="d-flex align-items-center" style={{ cursor: 'pointer' }}>
-                            <input
-                              type="radio"
-                              name={`enabled-${event.id}`}
-                              checked={!event.enabled}
-                              onChange={() => handleEventToggle(event.id, false)}
-                              style={{ marginRight: '6px', cursor: 'pointer' }}
-                            />
-                            <span style={{ fontSize: '14px', color: '#000' }}>No</span>
-                          </label>
-                        </div>
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+            </div>
+          ) : events.length === 0 ? (
+            <div className="py-12 text-center text-gray-500">
+              <Calendar className="mx-auto mb-4 h-12 w-12 text-gray-400" />
+              <p className="text-lg">No events found.</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {events.map((event) => {
+                const Icon = eventIcons[event.id] || Calendar;
+                const isUpdating = updatingIds.has(event.id);
+                
+                return (
+                  <div key={event.id} className="border-b border-gray-200 pb-4 mb-4 last:border-b-0 last:pb-0 last:mb-0">
+                    <div className="flex items-start gap-3">
+                      {/* Icon */}
+                      <div className="mt-1 rounded bg-gray-50 p-2">
+                        <Icon className="h-5 w-5 text-gray-600" />
                       </div>
 
-                      {/* Action Buttons */}
-                      <div className="d-flex gap-2 mb-3 flex-wrap">
-                        <button
-                          type="button"
-                          className="btn text-white"
-                          style={{ backgroundColor: '#FF8C00', borderRadius: '4px', padding: '6px 12px', fontSize: '14px' }}
-                        >
-                          {event.setupButton}
-                        </button>
-                        <button
-                          type="button"
-                          className="btn text-white"
-                          style={{ backgroundColor: '#28A745', borderRadius: '4px', padding: '6px 12px', fontSize: '14px' }}
-                        >
-                          {event.customizeButton}
-                        </button>
-                        {event.secondarySetupButton && (
-                          <>
+                      {/* Content */}
+                      <div className="grow">
+                        <div className="mb-3 flex items-center gap-3 flex-wrap">
+                          <h6 className="text-base font-semibold text-gray-900">
+                            {event.name}:
+                          </h6>
+
+                          {/* Enable/Disable Radio Buttons */}
+                          <div className="flex items-center gap-4">
+                            <label className="flex items-center cursor-pointer">
+                              <input
+                                type="radio"
+                                name={`enabled-${event.id}`}
+                                checked={event.enabled}
+                                onChange={() => handleEventToggle(event.id, true)}
+                                disabled={isUpdating}
+                                className="mr-2 cursor-pointer disabled:opacity-50"
+                              />
+                              <span className="text-sm text-gray-900">Yes</span>
+                            </label>
+                            <label className="flex items-center cursor-pointer">
+                              <input
+                                type="radio"
+                                name={`enabled-${event.id}`}
+                                checked={!event.enabled}
+                                onChange={() => handleEventToggle(event.id, false)}
+                                disabled={isUpdating}
+                                className="mr-2 cursor-pointer disabled:opacity-50"
+                              />
+                              <span className="text-sm text-gray-900">No</span>
+                            </label>
+                            {isUpdating && (
+                              <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div className="mb-3 flex gap-2 flex-wrap">
+                          {event.setupButton && (
                             <button
                               type="button"
-                              className="btn text-white"
-                              style={{ backgroundColor: '#FF8C00', borderRadius: '4px', padding: '6px 12px', fontSize: '14px' }}
+                              className="rounded bg-orange-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-orange-600"
+                            >
+                              {event.setupButton}
+                            </button>
+                          )}
+                          {event.customizeButton && (
+                            <button
+                              type="button"
+                              className="rounded bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700"
+                            >
+                              {event.customizeButton}
+                            </button>
+                          )}
+                          {event.secondarySetupButton && (
+                            <button
+                              type="button"
+                              className="rounded bg-orange-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-orange-600"
                             >
                               {event.secondarySetupButton}
                             </button>
+                          )}
+                          {event.secondaryCustomizeButton && (
                             <button
                               type="button"
-                              className="btn text-white"
-                              style={{ backgroundColor: '#28A745', borderRadius: '4px', padding: '6px 12px', fontSize: '14px' }}
+                              className="rounded bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700"
                             >
                               {event.secondaryCustomizeButton}
                             </button>
-                          </>
+                          )}
+                        </div>
+
+                        {/* Description */}
+                        {event.description && (
+                          <p className="text-sm text-gray-600 leading-relaxed">
+                            {event.description}
+                          </p>
                         )}
                       </div>
-
-                      {/* Description */}
-                      {event.description && (
-                        <p className="text-muted mb-0" style={{ fontSize: '14px', color: '#666', lineHeight: '1.6' }}>
-                          {event.description}
-                        </p>
-                      )}
                     </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
     </div>
