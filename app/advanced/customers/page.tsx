@@ -603,10 +603,10 @@ export default function CustomersPage() {
                         className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
                       >
                         <td className="px-4 py-4 whitespace-nowrap">
-                          <input 
-                            type="checkbox" 
-                            checked={selectedRows.includes(customer.id)}
-                            onChange={() => handleSelectRow(customer.id)}
+                            <input 
+                              type="checkbox" 
+                              checked={selectedRows.includes(customer.id)}
+                              onChange={() => handleSelectRow(customer.id)}
                             className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                           />
                         </td>
@@ -846,101 +846,101 @@ export default function CustomersPage() {
               )}
 
               <div className="space-y-4">
-                {/* Name Field */}
+              {/* Name Field */}
                 <div>
                   <label className="block mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">
-                    <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2">
                       <User className="w-4 h-4 text-gray-500" />
                       <span>Name <span className="text-red-500">*</span></span>
-                    </div>
-                  </label>
-                  <input
-                    type="text"
-                    name="name"
-                    value={formData.name}
-                    onChange={handleInputChange}
+                  </div>
+                </label>
+                <input
+                  type="text"
+                  name="name"
+                  value={formData.name}
+                  onChange={handleInputChange}
                     className={`w-full px-4 py-2.5 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-50 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
                       formErrors.name 
                         ? 'border-red-500 dark:border-red-500' 
                         : 'border-gray-300 dark:border-gray-600'
                     }`}
-                    placeholder="Enter customer name"
-                    disabled={isSubmitting}
-                  />
-                  {formErrors.name && (
+                  placeholder="Enter customer name"
+                  disabled={isSubmitting}
+                />
+                {formErrors.name && (
                     <p className="mt-1.5 text-sm text-red-600 dark:text-red-400">{formErrors.name}</p>
-                  )}
-                </div>
+                )}
+              </div>
 
-                {/* Email Field */}
+              {/* Email Field */}
                 <div>
                   <label className="block mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">
-                    <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2">
                       <Mail className="w-4 h-4 text-gray-500" />
                       <span>Email <span className="text-red-500">*</span></span>
-                    </div>
-                  </label>
-                  <input
-                    type="email"
-                    name="email"
-                    value={formData.email}
-                    onChange={handleInputChange}
+                  </div>
+                </label>
+                <input
+                  type="email"
+                  name="email"
+                  value={formData.email}
+                  onChange={handleInputChange}
                     className={`w-full px-4 py-2.5 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-50 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
                       formErrors.email 
                         ? 'border-red-500 dark:border-red-500' 
                         : 'border-gray-300 dark:border-gray-600'
                     }`}
-                    placeholder="Enter email address"
-                    disabled={isSubmitting}
-                  />
-                  {formErrors.email && (
+                  placeholder="Enter email address"
+                  disabled={isSubmitting}
+                />
+                {formErrors.email && (
                     <p className="mt-1.5 text-sm text-red-600 dark:text-red-400">{formErrors.email}</p>
-                  )}
-                </div>
+                )}
+              </div>
 
-                {/* Phone Field */}
+              {/* Phone Field */}
                 <div>
                   <label className="block mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">
-                    <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2">
                       <Phone className="w-4 h-4 text-gray-500" />
-                      <span>Phone</span>
-                    </div>
-                  </label>
-                  <input
-                    type="tel"
-                    name="phone"
-                    value={formData.phone}
-                    onChange={handleInputChange}
+                    <span>Phone</span>
+                  </div>
+                </label>
+                <input
+                  type="tel"
+                  name="phone"
+                  value={formData.phone}
+                  onChange={handleInputChange}
                     className={`w-full px-4 py-2.5 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-50 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
                       formErrors.phone 
                         ? 'border-red-500 dark:border-red-500' 
                         : 'border-gray-300 dark:border-gray-600'
                     }`}
-                    placeholder="Enter phone number (optional)"
-                    disabled={isSubmitting}
-                  />
-                  {formErrors.phone && (
+                  placeholder="Enter phone number (optional)"
+                  disabled={isSubmitting}
+                />
+                {formErrors.phone && (
                     <p className="mt-1.5 text-sm text-red-600 dark:text-red-400">{formErrors.phone}</p>
-                  )}
-                </div>
+                )}
+              </div>
 
-                {/* Company Field */}
+              {/* Company Field */}
                 <div>
                   <label className="block mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">
-                    <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2">
                       <Building className="w-4 h-4 text-gray-500" />
-                      <span>Company</span>
-                    </div>
-                  </label>
-                  <input
-                    type="text"
-                    name="company"
-                    value={formData.company}
-                    onChange={handleInputChange}
+                    <span>Company</span>
+                  </div>
+                </label>
+                <input
+                  type="text"
+                  name="company"
+                  value={formData.company}
+                  onChange={handleInputChange}
                     className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-50 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
-                    placeholder="Enter company name (optional)"
-                    disabled={isSubmitting}
-                  />
+                  placeholder="Enter company name (optional)"
+                  disabled={isSubmitting}
+                />
                 </div>
               </div>
 

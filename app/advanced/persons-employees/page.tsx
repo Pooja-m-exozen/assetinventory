@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Users, Plus, Upload, Settings, Search, Edit, Trash2, ChevronLeft, ChevronRight, ArrowUp, X, Loader2, AlertCircle, FileSpreadsheet, MapPin, Eye, Mail, Phone, Building, User, Briefcase, MapPin as MapPinIcon, FileText, Menu } from "lucide-react";
+import { Users, Plus, Upload, Settings, Search, Edit, Trash2, ChevronLeft, ChevronRight, ArrowUp, X, Loader2, AlertCircle, CheckCircle, FileSpreadsheet, MapPin, Eye, Mail, Phone, Building, User, Briefcase, MapPin as MapPinIcon, FileText, Menu } from "lucide-react";
 import {
   getPersonsEmployees,
   createPersonEmployee,
@@ -33,6 +33,14 @@ export default function PersonsEmployeesPage() {
   const [isImporting, setIsImporting] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [exportSuccess, setExportSuccess] = useState(false);
+  const [importResult, setImportResult] = useState<{
+    message: string;
+    totalRows: number;
+    importedCount: number;
+    failedCount: number;
+    errors?: Array<{ row: number; [key: string]: any; error: string }>;
+  } | null>(null);
+  const [isImportResultModalOpen, setIsImportResultModalOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSearchCriteriaOpen, setIsSearchCriteriaOpen] = useState(false);
   const [isColumnSetupOpen, setIsColumnSetupOpen] = useState(false);
@@ -197,12 +205,29 @@ export default function PersonsEmployeesPage() {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // Validate file type
+    const validExtensions = [".xlsx", ".xls", ".csv"];
+    const fileExtension = "." + file.name.split(".").pop()?.toLowerCase();
+    if (!validExtensions.includes(fileExtension)) {
+      alert("Please select a valid Excel or CSV file (.xlsx, .xls, .csv)");
+      return;
+    }
+
+    // Validate file size (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      alert("File size must be less than 10MB");
+      return;
+    }
+
     try {
       setIsImporting(true);
+      setError(null);
       const result = await importPersonsEmployees(file);
-      alert(`Import completed: ${result.importedCount} imported, ${result.failedCount} failed`);
+      setImportResult(result);
+      setIsImportResultModalOpen(true);
       await fetchPersonsEmployees();
     } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to import persons/employees");
       alert(err instanceof Error ? err.message : "Failed to import persons/employees");
     } finally {
       setIsImporting(false);
@@ -1466,6 +1491,93 @@ export default function PersonsEmployeesPage() {
                   Save Configuration
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Import Result Modal */}
+      {isImportResultModalOpen && importResult && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="w-full max-w-2xl rounded-lg bg-white p-6 shadow-xl max-h-[90vh] overflow-y-auto">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900">
+                Import Results
+              </h3>
+              <button
+                type="button"
+                className="text-gray-400 hover:text-gray-600"
+                onClick={() => setIsImportResultModalOpen(false)}
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="mb-4 rounded-lg p-4 bg-blue-50">
+              <div className="flex items-center gap-2 mb-2">
+                <CheckCircle className="h-5 w-5 text-blue-600" />
+                <p className="text-sm font-medium text-blue-900">
+                  {importResult.message}
+                </p>
+              </div>
+              <div className="text-sm text-blue-800 space-y-1">
+                <p>Total Rows: {importResult.totalRows}</p>
+                <p className="text-green-700">Successfully Imported: {importResult.importedCount}</p>
+                {importResult.failedCount > 0 && (
+                  <p className="text-red-700">Failed: {importResult.failedCount}</p>
+                )}
+              </div>
+            </div>
+
+            {importResult.errors && importResult.errors.length > 0 && (
+              <div className="mb-4">
+                <h4 className="text-sm font-semibold text-gray-900 mb-2">
+                  Error Details:
+                </h4>
+                <div className="max-h-96 overflow-y-auto border border-gray-200 rounded-lg">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 sticky top-0">
+                      <tr>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Row</th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Field/Value</th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b">Error</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {importResult.errors.map((err, idx) => {
+                        // Extract field name and value from error object
+                        const fieldEntries = Object.entries(err).filter(([key]) => key !== 'row' && key !== 'error');
+                        const fieldInfo = fieldEntries.length > 0 
+                          ? `${fieldEntries[0][0]}: ${String(fieldEntries[0][1]).replace(/"/g, '')}`
+                          : 'N/A';
+                        
+                        return (
+                          <tr key={idx} className="border-b border-gray-100 hover:bg-gray-50">
+                            <td className="px-3 py-2 text-gray-900">{err.row}</td>
+                            <td className="px-3 py-2 text-gray-600">{fieldInfo}</td>
+                            <td className="px-3 py-2 text-red-600">{err.error}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                {importResult.errors.length > 10 && (
+                  <p className="mt-2 text-xs text-gray-500">
+                    Showing first {Math.min(10, importResult.errors.length)} errors. Please fix these errors and try importing again.
+                  </p>
+                )}
+              </div>
+            )}
+
+            <div className="flex justify-end">
+              <button
+                type="button"
+                className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                onClick={() => setIsImportResultModalOpen(false)}
+              >
+                Close
+              </button>
             </div>
           </div>
         </div>

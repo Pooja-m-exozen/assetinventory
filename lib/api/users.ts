@@ -1,20 +1,20 @@
 const API_BASE_URL = "https://digitalasset.zenapi.co.in/api";
 
 export interface User {
-  id: number;
+  id: number | string;
   name: string;
   email: string;
   phone: string;
   jobTitle: string;
   role: string;
-  securityGroupId: number;
+  securityGroupId: number | string;
   groupName: string;
   status: string;
   lastLogin?: string;
   createdAt?: string;
   updatedAt?: string;
-  createdBy?: number;
-  updatedBy?: number;
+  createdBy?: number | string;
+  updatedBy?: number | string;
 }
 
 export interface PaginatedResponse<T> {
@@ -44,7 +44,7 @@ export interface CreateUserData {
   phone?: string;
   jobTitle?: string;
   role?: string;
-  securityGroupId: number;
+  securityGroupId: number | string;
   status?: string;
 }
 
@@ -54,12 +54,12 @@ export interface UpdateUserData {
   phone?: string;
   jobTitle?: string;
   role?: string;
-  securityGroupId?: number;
+  securityGroupId?: number | string;
   status?: string;
 }
 
 export interface SecurityGroupOption {
-  id: number;
+  id: number | string;
   name: string;
   description: string;
 }
@@ -166,9 +166,9 @@ export const getUsers = async (
     limit: limit.toString(),
   });
 
-  if (search) {
-    params.append("search", search);
-    params.append("searchField", searchField);
+  if (search && search.trim()) {
+    params.append("search", search.trim());
+    params.append("searchField", searchField || "all");
   }
 
   if (status) {
@@ -179,11 +179,21 @@ export const getUsers = async (
     params.append("securityGroupId", securityGroupId.toString());
   }
 
-  return apiRequest<PaginatedResponse<User>>(`/v1/users?${params}`);
+  const endpoint = `/v1/users?${params}`;
+  console.log("Fetching users from:", endpoint);
+  
+  try {
+    const response = await apiRequest<PaginatedResponse<User>>(endpoint);
+    console.log("Users API response:", response);
+    return response;
+  } catch (error) {
+    console.error("Error fetching users:", error);
+    throw error;
+  }
 };
 
 // Get single user by ID
-export const getUser = async (id: number): Promise<{ data: User }> => {
+export const getUser = async (id: number | string): Promise<{ data: User }> => {
   return apiRequest<{ data: User }>(`/v1/users/${id}`);
 };
 
@@ -206,31 +216,83 @@ export const createUser = async (data: CreateUserData): Promise<{ message: strin
 };
 
 // Update user
-export const updateUser = async (id: number, data: UpdateUserData): Promise<{ message: string; data: User }> => {
-  return apiRequest<{ message: string; data: User }>(`/v1/users/${id}`, {
-    method: "PUT",
-    body: JSON.stringify(data),
-  });
+export const updateUser = async (id: number | string, data: UpdateUserData): Promise<{ message: string; data: User }> => {
+  // Log the data being sent (for debugging)
+  console.log("Updating user:", id, "with data:", data);
+  
+  try {
+    const result = await apiRequest<{ message: string; data: User }>(`/v1/users/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+    console.log("User updated successfully:", result);
+    return result;
+  } catch (error) {
+    console.error("Error in updateUser:", error);
+    throw error;
+  }
 };
 
 // Delete user
-export const deleteUser = async (id: number): Promise<{ message: string }> => {
+export const deleteUser = async (id: number | string): Promise<{ message: string }> => {
   return apiRequest<{ message: string }>(`/v1/users/${id}`, {
     method: "DELETE",
   });
 };
 
 // Bulk delete users
-export const bulkDeleteUsers = async (ids: number[]): Promise<{ message: string; deletedCount: number; failedCount: number }> => {
-  return apiRequest<{ message: string; deletedCount: number; failedCount: number }>("/v1/users/bulk", {
-    method: "DELETE",
-    body: JSON.stringify({ ids }),
-  });
+export const bulkDeleteUsers = async (ids: (number | string)[]): Promise<{ message: string; deletedCount: number; failedCount: number }> => {
+  // Try the bulk endpoint first
+  try {
+    return await apiRequest<{ message: string; deletedCount: number; failedCount: number }>("/v1/users/bulk", {
+      method: "DELETE",
+      body: JSON.stringify({ ids }),
+    });
+  } catch (error) {
+    // If bulk endpoint fails (routing issue), try alternative endpoint
+    const errorWithDetails = error as Error & { details?: any };
+    const errorMessage = errorWithDetails.details?.error?.message || errorWithDetails.message || "";
+    
+    if (errorMessage.includes("NOT_FOUND") && errorMessage.includes("bulk")) {
+      // Try alternative endpoint structure
+      console.log("Bulk endpoint failed, trying alternative endpoint...");
+      try {
+        return await apiRequest<{ message: string; deletedCount: number; failedCount: number }>("/v1/users/bulk-delete", {
+          method: "POST",
+          body: JSON.stringify({ ids }),
+        });
+      } catch (altError) {
+        // If alternative also fails, fall back to individual deletes
+        console.log("Alternative bulk endpoint failed, falling back to individual deletes...");
+        let deletedCount = 0;
+        let failedCount = 0;
+        const errors: string[] = [];
+
+        for (const id of ids) {
+          try {
+            await deleteUser(String(id)); // Convert to string for API call
+            deletedCount++;
+          } catch (deleteError) {
+            failedCount++;
+            const deleteErrorMsg = deleteError instanceof Error ? deleteError.message : "Unknown error";
+            errors.push(`User ID ${id}: ${deleteErrorMsg}`);
+          }
+        }
+
+        return {
+          message: `Deleted ${deletedCount} user(s), ${failedCount} failed`,
+          deletedCount,
+          failedCount,
+        };
+      }
+    }
+    throw error;
+  }
 };
 
 // Reset user password
 export const resetUserPassword = async (
-  id: number,
+  id: number | string,
   newPassword: string,
   sendEmail: boolean = true
 ): Promise<{ message: string }> => {
@@ -241,7 +303,7 @@ export const resetUserPassword = async (
 };
 
 // Update user status
-export const updateUserStatus = async (id: number, status: string): Promise<{ message: string; data: Partial<User> }> => {
+export const updateUserStatus = async (id: number | string, status: string): Promise<{ message: string; data: Partial<User> }> => {
   return apiRequest<{ message: string; data: Partial<User> }>(`/v1/users/${id}/status`, {
     method: "PUT",
     body: JSON.stringify({ status }),
@@ -250,8 +312,8 @@ export const updateUserStatus = async (id: number, status: string): Promise<{ me
 
 // Assign user to security group
 export const assignUserToSecurityGroup = async (
-  id: number,
-  securityGroupId: number
+  id: number | string,
+  securityGroupId: number | string
 ): Promise<{ message: string; data: Partial<User> }> => {
   return apiRequest<{ message: string; data: Partial<User> }>(`/v1/users/${id}/security-group`, {
     method: "PUT",

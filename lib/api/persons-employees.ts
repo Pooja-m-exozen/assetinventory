@@ -209,7 +209,11 @@ export const importPersonsEmployees = async (
   totalRows: number;
   importedCount: number;
   failedCount: number;
-  errors?: Array<{ row: number; email: string; error: string }>;
+  errors?: Array<{ 
+    row: number; 
+    [key: string]: any; // Can include email, phone, name, employeeId, etc.
+    error: string;
+  }>;
 }> => {
   const token = getAuthToken();
   const formData = new FormData();

@@ -18,8 +18,21 @@ import {
   X,
   Calendar,
   Trash2,
+  Loader2,
+  AlertCircle,
+  CheckCircle,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import {
+  getMaintenancesList,
+  getMaintenance,
+  createMaintenance,
+  updateMaintenance,
+  deleteMaintenance,
+  exportMaintenancesList,
+  importMaintenances,
+  type ListMaintenance,
+} from "@/lib/api/lists";
 
 interface Maintenance {
   id: string;
@@ -31,28 +44,17 @@ interface Maintenance {
   maintenanceDetail: string;
 }
 
-const dummyMaintenances: Maintenance[] = [
-  {
-    id: "1",
-    status: "Scheduled",
-    expires: "11/20/2025",
-    assetTagId: "EXO/2025/CGB-WTP-01",
-    description: "Water Treatment Plant 200 KLD",
-    title: "Testing",
-    maintenanceDetail: "Testing",
-  },
-];
-
 export default function ListOfMaintenancesPage() {
+  const [maintenances, setMaintenances] = useState<ListMaintenance[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [sortColumn, setSortColumn] = useState<string | null>("expires");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
-  const [filter, setFilter] = useState("all");
+  const [filter, setFilter] = useState<"all" | "scheduled" | "completed" | "cancelled">("all");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<"edit" | "view">("edit");
   const [activeTab, setActiveTab] = useState<"maintenance" | "asset">("maintenance");
-  const [selectedMaintenance, setSelectedMaintenance] = useState<Maintenance | null>(null);
+  const [selectedMaintenance, setSelectedMaintenance] = useState<ListMaintenance | null>(null);
   const [formData, setFormData] = useState({
     title: "",
     details: "",
@@ -65,6 +67,64 @@ export default function ListOfMaintenancesPage() {
     frequency: "Weekly",
     recurOnEvery: "week on Monday",
   });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [pagination, setPagination] = useState({
+    totalRecords: 0,
+    totalPages: 0,
+    startRecord: 0,
+    endRecord: 0,
+  });
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Fetch maintenances from API
+  const fetchMaintenances = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      if (typeof window !== "undefined") {
+        const token = localStorage.getItem("authToken") || sessionStorage.getItem("authToken");
+        if (!token) {
+          setError("Please login to access this page");
+          setLoading(false);
+          return;
+        }
+      }
+
+      const response = await getMaintenancesList(
+        currentPage,
+        itemsPerPage,
+        sortColumn || undefined,
+        sortDirection,
+        filter,
+        undefined // search query - can be added later
+      );
+
+      setMaintenances(response.data);
+      setPagination(response.pagination);
+    } catch (err) {
+      console.error("Error fetching maintenances:", err);
+      setError(err instanceof Error ? err.message : "Failed to fetch maintenances");
+      setMaintenances([]);
+      setPagination({
+        totalRecords: 0,
+        totalPages: 0,
+        startRecord: 0,
+        endRecord: 0,
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [currentPage, itemsPerPage, sortColumn, sortDirection, filter]);
+
+  useEffect(() => {
+    fetchMaintenances();
+  }, [fetchMaintenances]);
 
   const handleSort = (column: string) => {
     if (sortColumn === column) {
@@ -73,72 +133,143 @@ export default function ListOfMaintenancesPage() {
       setSortColumn(column);
       setSortDirection("asc");
     }
+    setCurrentPage(1);
   };
 
-  const totalRecords = dummyMaintenances.length;
-  const startRecord = (currentPage - 1) * itemsPerPage + 1;
-  const endRecord = Math.min(currentPage * itemsPerPage, totalRecords);
-  const totalPages = Math.ceil(totalRecords / itemsPerPage);
-  const paginatedMaintenances = dummyMaintenances.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
-  );
+  const handlePageChange = (newPage: number) => {
+    setCurrentPage(newPage);
+  };
 
-  const handleExportToExcel = () => {
-    console.log("Exporting to Excel...");
+  const handleItemsPerPageChange = (newLimit: number) => {
+    setItemsPerPage(newLimit);
+    setCurrentPage(1);
+  };
+
+  const handleExportToExcel = async () => {
+    try {
+      setExporting(true);
+      setError(null);
+
+      const blob = await exportMaintenancesList(
+        "csv",
+        sortColumn || undefined,
+        sortDirection,
+        filter,
+        undefined
+      );
+
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `maintenances_export_${new Date().toISOString().split("T")[0]}.csv`;
+      link.style.visibility = "hidden";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Error exporting maintenances:", err);
+      setError(err instanceof Error ? err.message : "Failed to export maintenances");
+    } finally {
+      setExporting(false);
+    }
   };
 
   const handleImportMaintenance = () => {
-    console.log("Importing maintenance...");
+    fileInputRef.current?.click();
   };
 
-  const handleEdit = (maintenance: Maintenance) => {
-    setSelectedMaintenance(maintenance);
-    setModalMode("edit");
-    // Convert date from MM/dd/yyyy to yyyy-MM-dd for date input
-    const convertDate = (dateStr: string) => {
-      if (!dateStr) return "";
-      const [month, day, year] = dateStr.split("/");
-      return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
-    };
-    setFormData({
-      title: maintenance.title,
-      details: maintenance.maintenanceDetail,
-      dueDate: convertDate(maintenance.expires),
-      maintenanceBy: "Pooja",
-      maintenanceStatus: maintenance.status,
-      dateCompleted: "",
-      maintenanceCost: "1000.00",
-      repeating: "Yes",
-      frequency: "Weekly",
-      recurOnEvery: "week on Monday",
-    });
-    setIsModalOpen(true);
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setImporting(true);
+      setError(null);
+      setSuccess(null);
+
+      const result = await importMaintenances(file);
+
+      setSuccess(`Import completed: ${result.importedCount} imported, ${result.failedCount} failed`);
+      setTimeout(() => setSuccess(null), 5000);
+
+      if (result.errors && result.errors.length > 0) {
+        console.error("Import errors:", result.errors);
+        setError(`Some rows failed: ${result.errors.map(e => `Row ${e.row}: ${e.error}`).join(", ")}`);
+      }
+
+      // Refresh the list
+      fetchMaintenances();
+    } catch (err) {
+      console.error("Error importing maintenances:", err);
+      setError(err instanceof Error ? err.message : "Failed to import maintenances");
+    } finally {
+      setImporting(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
   };
 
-  const handleView = (maintenance: Maintenance) => {
-    setSelectedMaintenance(maintenance);
-    setModalMode("view");
-    setActiveTab("maintenance");
-    // Convert date from MM/dd/yyyy to yyyy-MM-dd for date input
-    const convertDate = (dateStr: string) => {
-      if (!dateStr) return "";
-      const [month, day, year] = dateStr.split("/");
-      return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
-    };
-    setFormData({
-      title: maintenance.title,
-      details: maintenance.maintenanceDetail,
-      dueDate: convertDate(maintenance.expires),
-      maintenanceBy: "Pooja",
-      maintenanceStatus: maintenance.status,
-      dateCompleted: "",
-      maintenanceCost: "1000.00",
-      repeating: "Yes",
-      frequency: "Weekly",
-      recurOnEvery: "week on Monday",
-    });
-    setIsModalOpen(true);
+  const convertDate = (dateStr: string) => {
+    if (!dateStr) return "";
+    const [month, day, year] = dateStr.split("/");
+    return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  };
+
+  const handleEdit = async (maintenance: ListMaintenance) => {
+    try {
+      // Fetch full maintenance details
+      const response = await getMaintenance(maintenance.id);
+      const fullMaintenance = response.data;
+      
+      setSelectedMaintenance(fullMaintenance);
+      setModalMode("edit");
+      setFormData({
+        title: fullMaintenance.title,
+        details: fullMaintenance.maintenanceDetail,
+        dueDate: convertDate(fullMaintenance.expires),
+        maintenanceBy: fullMaintenance.maintenanceBy || "",
+        maintenanceStatus: fullMaintenance.status,
+        dateCompleted: fullMaintenance.dateCompleted ? convertDate(fullMaintenance.dateCompleted) : "",
+        maintenanceCost: fullMaintenance.maintenanceCost?.toString() || "",
+        repeating: fullMaintenance.repeating ? "Yes" : "No",
+        frequency: fullMaintenance.frequency || "Weekly",
+        recurOnEvery: fullMaintenance.recurOnEvery || "week on Monday",
+      });
+      setIsModalOpen(true);
+    } catch (err) {
+      console.error("Error fetching maintenance:", err);
+      setError(err instanceof Error ? err.message : "Failed to fetch maintenance details");
+    }
+  };
+
+  const handleView = async (maintenance: ListMaintenance) => {
+    try {
+      // Fetch full maintenance details
+      const response = await getMaintenance(maintenance.id);
+      const fullMaintenance = response.data;
+      
+      setSelectedMaintenance(fullMaintenance);
+      setModalMode("view");
+      setActiveTab("maintenance");
+      setFormData({
+        title: fullMaintenance.title,
+        details: fullMaintenance.maintenanceDetail,
+        dueDate: convertDate(fullMaintenance.expires),
+        maintenanceBy: fullMaintenance.maintenanceBy || "",
+        maintenanceStatus: fullMaintenance.status,
+        dateCompleted: fullMaintenance.dateCompleted ? convertDate(fullMaintenance.dateCompleted) : "",
+        maintenanceCost: fullMaintenance.maintenanceCost?.toString() || "",
+        repeating: fullMaintenance.repeating ? "Yes" : "No",
+        frequency: fullMaintenance.frequency || "Weekly",
+        recurOnEvery: fullMaintenance.recurOnEvery || "week on Monday",
+      });
+      setIsModalOpen(true);
+    } catch (err) {
+      console.error("Error fetching maintenance:", err);
+      setError(err instanceof Error ? err.message : "Failed to fetch maintenance details");
+    }
   };
 
   const handleCloseModal = () => {
@@ -146,17 +277,65 @@ export default function ListOfMaintenancesPage() {
     setSelectedMaintenance(null);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Handle form submission
-    console.log("Form submitted:", formData);
-    handleCloseModal();
+    
+    if (!selectedMaintenance) return;
+
+    try {
+      setSaving(true);
+      setError(null);
+      setSuccess(null);
+
+      await updateMaintenance(selectedMaintenance.id, {
+        title: formData.title,
+        details: formData.details,
+        dueDate: formData.dueDate || undefined,
+        maintenanceBy: formData.maintenanceBy || undefined,
+        maintenanceStatus: formData.maintenanceStatus as any,
+        dateCompleted: formData.dateCompleted || undefined,
+        maintenanceCost: formData.maintenanceCost || undefined,
+        repeating: formData.repeating === "Yes",
+        frequency: formData.frequency as any,
+        recurOnEvery: formData.recurOnEvery || undefined,
+      });
+
+      setSuccess("Maintenance updated successfully!");
+      setTimeout(() => setSuccess(null), 3000);
+      handleCloseModal();
+      fetchMaintenances();
+    } catch (err) {
+      console.error("Error updating maintenance:", err);
+      setError(err instanceof Error ? err.message : "Failed to update maintenance");
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleDelete = () => {
-    // Handle delete
-    console.log("Deleting maintenance:", selectedMaintenance?.id);
-    handleCloseModal();
+  const handleDelete = async () => {
+    if (!selectedMaintenance) return;
+
+    if (!confirm("Are you sure you want to delete this maintenance?")) {
+      return;
+    }
+
+    try {
+      setSaving(true);
+      setError(null);
+      setSuccess(null);
+
+      await deleteMaintenance(selectedMaintenance.id);
+
+      setSuccess("Maintenance deleted successfully!");
+      setTimeout(() => setSuccess(null), 3000);
+      handleCloseModal();
+      fetchMaintenances();
+    } catch (err) {
+      console.error("Error deleting maintenance:", err);
+      setError(err instanceof Error ? err.message : "Failed to delete maintenance");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -199,18 +378,45 @@ export default function ListOfMaintenancesPage() {
                 onClick={handleExportToExcel}
                 className="flex items-center gap-2 border-gray-300"
                 style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}
+                disabled={exporting || loading}
               >
-                <FileSpreadsheet className="h-4 w-4" />
-                <span>Export to Excel</span>
+                {exporting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Exporting...
+                  </>
+                ) : (
+                  <>
+                    <FileSpreadsheet className="h-4 w-4" />
+                    <span>Export to Excel</span>
+                  </>
+                )}
               </Button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv,.xlsx,.xls"
+                onChange={handleFileChange}
+                className="hidden"
+              />
               <Button
                 variant="outline"
                 onClick={handleImportMaintenance}
                 className="flex items-center gap-2 border-gray-300"
                 style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}
+                disabled={importing || loading}
               >
-                <Upload className="h-4 w-4" />
-                <span>Import Maintenance</span>
+                {importing ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Importing...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="h-4 w-4" />
+                    <span>Import Maintenance</span>
+                  </>
+                )}
               </Button>
               <Button
                 variant="outline"
@@ -221,13 +427,25 @@ export default function ListOfMaintenancesPage() {
                 <span>Setup Columns</span>
               </Button>
               <div className="flex items-center gap-1">
-                <Button variant="ghost" size="icon" className="h-8 w-8">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  disabled={currentPage <= 1 || loading}
+                >
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
                 <Button variant="ghost" size="sm" className="h-8 w-8 bg-yellow-500 text-gray-900 hover:bg-yellow-600">
                   {currentPage}
                 </Button>
-                <Button variant="ghost" size="icon" className="h-8 w-8">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  disabled={currentPage >= pagination.totalPages || loading}
+                >
                   <ChevronRight className="h-4 w-4" />
                 </Button>
               </div>
@@ -238,12 +456,10 @@ export default function ListOfMaintenancesPage() {
           <div className="flex items-center gap-2">
             <select
               value={itemsPerPage}
-              onChange={(e) => {
-                setItemsPerPage(Number(e.target.value));
-                setCurrentPage(1);
-              }}
+              onChange={(e) => handleItemsPerPageChange(Number(e.target.value))}
               className="px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm"
               style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}
+              disabled={loading}
             >
               <option value={10}>10</option>
               <option value={25}>25</option>
@@ -259,7 +475,26 @@ export default function ListOfMaintenancesPage() {
 
       {/* Main Content - Table */}
       <div className="p-6">
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+        {error && (
+          <div className="mb-4 rounded-lg bg-red-50 p-4 flex items-center text-red-800">
+            <AlertCircle className="mr-2 h-5 w-5 shrink-0" />
+            {error}
+          </div>
+        )}
+
+        {success && (
+          <div className="mb-4 rounded-lg bg-green-50 p-4 flex items-center text-green-800">
+            <CheckCircle className="mr-2 h-5 w-5 shrink-0" />
+            {success}
+          </div>
+        )}
+
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+          </div>
+        ) : (
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-yellow-50 dark:bg-yellow-900/20 border-b border-gray-200 dark:border-gray-700">
@@ -336,7 +571,14 @@ export default function ListOfMaintenancesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                {paginatedMaintenances.map((maintenance) => (
+                {maintenances.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-8 text-center text-gray-500">
+                      No maintenances found
+                    </td>
+                  </tr>
+                ) : (
+                  maintenances.map((maintenance) => (
                   <tr key={maintenance.id} className="hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors">
                     <td className="px-4 py-4">
                       <div className="flex items-center gap-2">
@@ -415,7 +657,8 @@ export default function ListOfMaintenancesPage() {
                       </div>
                     </td>
                   </tr>
-                ))}
+                  ))
+                )}
               </tbody>
             </table>
           </div>
@@ -423,21 +666,34 @@ export default function ListOfMaintenancesPage() {
           {/* Table Footer */}
           <div className="bg-gray-50 dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 px-6 py-4 flex items-center justify-between">
             <div className="text-sm text-gray-600 dark:text-gray-400" style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}>
-              Showing {startRecord} to {endRecord} of {totalRecords} records
+              Showing {pagination.startRecord} to {pagination.endRecord} of {pagination.totalRecords} records
             </div>
             <div className="flex items-center gap-1">
-              <Button variant="ghost" size="icon" className="h-8 w-8">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => handlePageChange(currentPage - 1)}
+                disabled={currentPage <= 1 || loading}
+              >
                 <ChevronLeft className="h-4 w-4" />
               </Button>
               <Button variant="ghost" size="sm" className="h-8 w-8 bg-yellow-500 text-gray-900 hover:bg-yellow-600">
                 {currentPage}
               </Button>
-              <Button variant="ghost" size="icon" className="h-8 w-8">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => handlePageChange(currentPage + 1)}
+                disabled={currentPage >= pagination.totalPages || loading}
+              >
                 <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
           </div>
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Asset Maintenance Modal */}
@@ -706,18 +962,36 @@ export default function ListOfMaintenancesPage() {
                   onClick={handleDelete}
                   className="bg-red-500 hover:bg-red-600 text-white"
                   style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}
+                  disabled={saving}
                 >
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Delete
+                  {saving ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Deleting...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Delete
+                    </>
+                  )}
                 </Button>
                 <div className="flex items-center gap-3">
-                  <Button
-                    type="submit"
-                    className="bg-yellow-500 hover:bg-yellow-600 text-white"
-                    style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}
-                  >
-                    Submit
-                  </Button>
+                <Button
+                  type="submit"
+                  className="bg-yellow-500 hover:bg-yellow-600 text-white"
+                  style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}
+                  disabled={saving}
+                >
+                  {saving ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    "Submit"
+                  )}
+                </Button>
                   <Button
                     type="button"
                     onClick={handleCloseModal}

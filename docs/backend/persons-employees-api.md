@@ -557,10 +557,25 @@ John Doe,EFMS3296,Software Engineer,7338265999,john.doe@exozen.in,Main Office,Ba
       "row": 12,
       "employeeId": "EFMS3295",
       "error": "Employee ID already exists"
+    },
+    {
+      "row": 2,
+      "email": "poojamallik2001@gmail.com",
+      "phone": "invalid-phone",
+      "error": "Invalid phone format"
     }
   ]
 }
 ```
+
+**Note on Error Response Structure:**
+- Each error object includes:
+  - `row`: The row number in the import file (1-based, where row 1 is the header)
+  - Field values: One or more field names with their values (e.g., `email`, `phone`, `employeeId`, `name`) to help identify the problematic record
+  - `error`: The error message describing what went wrong
+- The field names in the error object represent the values from that row, not necessarily the field that has the error
+- For example, if phone format is invalid, the error object may include `email` to identify the record, but the `error` message will specify "Invalid phone format"
+- Backend should include relevant field values to help identify the problematic record
 
 **Error Responses:**
 ```json
