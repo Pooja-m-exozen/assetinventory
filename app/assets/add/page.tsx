@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
@@ -9,8 +9,18 @@ import {
   Plus,
   Upload,
 } from "lucide-react";
+import { 
+  createAsset, 
+  getDropdownOptions, 
+  createDropdownOption,
+  uploadAssetPhoto,
+  type CreateAssetData,
+  type DropdownOption 
+} from "@/lib/api/assets";
+import { useRouter } from "next/navigation";
 
 export default function AddAssetPage() {
+  const router = useRouter();
   const [formData, setFormData] = useState({
     description: "",
     assetTagId: "",
@@ -21,10 +31,10 @@ export default function AddAssetPage() {
     model: "",
     capacity: "",
     serialNo: "",
-    site: "Casagrand Boulev",
-    location: "Common Area",
-    category: "Asset",
-    department: "Asset",
+    site: "",
+    location: "",
+    category: "",
+    department: "",
     depreciableAsset: "Yes",
     depreciableCost: "",
     assetLife: "",
@@ -32,6 +42,52 @@ export default function AddAssetPage() {
     depreciationMethod: "Declining Balance",
     dateAcquired: "",
   });
+
+  const [dropdownOptions, setDropdownOptions] = useState<{
+    site: DropdownOption[];
+    location: DropdownOption[];
+    category: DropdownOption[];
+    department: DropdownOption[];
+  }>({
+    site: [],
+    location: [],
+    category: [],
+    department: [],
+  });
+
+  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetch dropdown options on component mount
+  useEffect(() => {
+    const fetchDropdownOptions = async () => {
+      setLoading(true);
+      try {
+        const [siteRes, locationRes, categoryRes, departmentRes] = await Promise.all([
+          getDropdownOptions("site"),
+          getDropdownOptions("location"),
+          getDropdownOptions("category"),
+          getDropdownOptions("department"),
+        ]);
+
+        setDropdownOptions({
+          site: siteRes.data || [],
+          location: locationRes.data || [],
+          category: categoryRes.data || [],
+          department: departmentRes.data || [],
+        });
+      } catch (err) {
+        console.error("Error fetching dropdown options:", err);
+        setError(err instanceof Error ? err.message : "Failed to load dropdown options");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDropdownOptions();
+  }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -42,10 +98,168 @@ export default function AddAssetPage() {
     setFormData((prev) => ({ ...prev, depreciableAsset: value }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Validate file type
+      const validTypes = ["image/jpeg", "image/jpg", "image/gif", "image/png"];
+      if (!validTypes.includes(file.type)) {
+        setError("Only JPG, GIF, PNG files are allowed");
+        return;
+      }
+      setPhotoFile(file);
+      setError(null);
+    }
+  };
+
+  const handleCreateNewOption = async (type: "site" | "location" | "category" | "department") => {
+    const label = prompt(`Enter new ${type} name:`);
+    if (!label || !label.trim()) return;
+
+    try {
+      const response = await createDropdownOption({
+        type,
+        value: label.trim(),
+        label: label.trim(),
+      });
+
+      // Update the corresponding dropdown options
+      setDropdownOptions((prev) => ({
+        ...prev,
+        [type]: [...prev[type], response.data],
+      }));
+
+      // Set the newly created option as selected
+      setFormData((prev) => ({
+        ...prev,
+        [type]: response.data.value,
+      }));
+    } catch (err) {
+      console.error(`Error creating ${type}:`, err);
+      setError(err instanceof Error ? err.message : `Failed to create ${type}`);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Handle form submission
-    console.log("Form submitted:", formData);
+    setSubmitting(true);
+    setError(null);
+
+    try {
+      const isDepreciable = formData.depreciableAsset === "Yes";
+
+      // Validate required fields for depreciable assets
+      if (isDepreciable) {
+        if (!formData.depreciableCost || formData.depreciableCost.trim() === "") {
+          setError("Depreciable cost is required when asset is depreciable");
+          setSubmitting(false);
+          return;
+        }
+        if (!formData.assetLife || formData.assetLife.trim() === "") {
+          setError("Asset life is required when asset is depreciable");
+          setSubmitting(false);
+          return;
+        }
+        if (!formData.depreciationMethod || formData.depreciationMethod.trim() === "") {
+          setError("Depreciation method is required when asset is depreciable");
+          setSubmitting(false);
+          return;
+        }
+        if (!formData.dateAcquired || formData.dateAcquired.trim() === "") {
+          setError("Date acquired is required when asset is depreciable");
+          setSubmitting(false);
+          return;
+        }
+      }
+
+      // Helper function to convert empty strings to undefined
+      const toUndefined = (value: string) => (value && value.trim() !== "" ? value.trim() : undefined);
+      const toNumber = (value: string) => {
+        const trimmed = value?.trim();
+        if (!trimmed) return undefined;
+        const num = parseFloat(trimmed);
+        return !isNaN(num) && isFinite(num) ? num : undefined;
+      };
+      const toInt = (value: string) => {
+        const trimmed = value?.trim();
+        if (!trimmed) return undefined;
+        const num = parseInt(trimmed);
+        return !isNaN(num) && isFinite(num) && num > 0 ? num : undefined;
+      };
+
+      // Prepare asset data
+      const assetData: CreateAssetData = {
+        description: formData.description.trim(),
+        assetTagId: formData.assetTagId.trim(),
+        purchasedFrom: toUndefined(formData.purchasedFrom),
+        purchaseDate: toUndefined(formData.purchaseDate),
+        brand: toUndefined(formData.brand),
+        cost: toNumber(formData.cost),
+        model: toUndefined(formData.model),
+        capacity: toUndefined(formData.capacity),
+        serialNo: toUndefined(formData.serialNo),
+        site: formData.site.trim(),
+        location: formData.location.trim(),
+        category: formData.category.trim(),
+        department: formData.department.trim(),
+        depreciableAsset: isDepreciable,
+        depreciableCost: isDepreciable ? toNumber(formData.depreciableCost) : undefined,
+        assetLife: isDepreciable ? toInt(formData.assetLife) : undefined,
+        salvageValue: toNumber(formData.salvageValue) ?? 0,
+        depreciationMethod: isDepreciable ? formData.depreciationMethod.trim() : undefined,
+        dateAcquired: isDepreciable ? formData.dateAcquired.trim() : undefined,
+      };
+
+      // Create the asset
+      const response = await createAsset(assetData);
+      
+      // Upload photo if provided
+      if (photoFile && response.data.id) {
+        try {
+          await uploadAssetPhoto(response.data.id, photoFile);
+        } catch (photoErr) {
+          console.error("Error uploading photo:", photoErr);
+          // Don't fail the entire submission if photo upload fails
+          setError("Asset created but photo upload failed. You can upload it later.");
+        }
+      }
+
+      // Redirect to assets list or show success message
+      router.push("/assets");
+    } catch (err) {
+      console.error("Error creating asset:", err);
+      // Try to extract more detailed error message
+      let errorMessage = "Failed to create asset";
+      if (err instanceof Error) {
+        errorMessage = err.message;
+        
+        // Check if there are validation details in the error
+        if (err.message.includes("Validation failed")) {
+          // Try to get more details from the error response
+          try {
+            // The error might have details attached if the API returns them
+            const errorDetails = (err as any).details;
+            if (errorDetails && typeof errorDetails === 'object') {
+              const fieldErrors = Object.entries(errorDetails)
+                .map(([field, message]) => `${field}: ${message}`)
+                .join(', ');
+              if (fieldErrors) {
+                errorMessage = `Validation failed: ${fieldErrors}`;
+              } else {
+                errorMessage = "Validation failed. Please check all required fields are filled correctly.";
+              }
+            } else {
+              errorMessage = "Validation failed. Please check all required fields are filled correctly.";
+            }
+          } catch (e) {
+            errorMessage = "Validation failed. Please check all required fields are filled correctly.";
+          }
+        }
+      }
+      setError(errorMessage);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -57,6 +271,12 @@ export default function AddAssetPage() {
         >
         Add an Asset
       </h1>
+
+        {error && (
+          <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md">
+            <p className="text-sm text-red-800 dark:text-red-200">{error}</p>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Asset Details Section */}
@@ -218,13 +438,21 @@ export default function AddAssetPage() {
                     name="site"
                     value={formData.site}
                     onChange={handleChange}
-                    className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400"
+                    required
+                    disabled={loading}
+                    className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 disabled:opacity-50 disabled:cursor-not-allowed"
                     style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}
                   >
-                    <option value="Casagrand Boulev">Casagrand Boulev</option>
+                    <option value="">Select Site</option>
+                    {dropdownOptions.site.map((option) => (
+                      <option key={option.id} value={option.value}>
+                        {option.label || option.value}
+                      </option>
+                    ))}
                   </select>
                   <button
                     type="button"
+                    onClick={() => handleCreateNewOption("site")}
                     className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 text-sm flex items-center gap-1 transition-colors"
                     style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}
                   >
@@ -242,13 +470,21 @@ export default function AddAssetPage() {
                     name="location"
                     value={formData.location}
                     onChange={handleChange}
-                    className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400"
+                    required
+                    disabled={loading}
+                    className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 disabled:opacity-50 disabled:cursor-not-allowed"
                     style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}
                   >
-                    <option value="Common Area">Common Area</option>
+                    <option value="">Select Location</option>
+                    {dropdownOptions.location.map((option) => (
+                      <option key={option.id} value={option.value}>
+                        {option.label || option.value}
+                      </option>
+                    ))}
                   </select>
                   <button
                     type="button"
+                    onClick={() => handleCreateNewOption("location")}
                     className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 text-sm flex items-center gap-1 transition-colors"
                     style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}
                   >
@@ -266,13 +502,21 @@ export default function AddAssetPage() {
                     name="category"
                     value={formData.category}
                     onChange={handleChange}
-                    className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400"
+                    required
+                    disabled={loading}
+                    className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 disabled:opacity-50 disabled:cursor-not-allowed"
                     style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}
                   >
-                    <option value="Asset">Asset</option>
+                    <option value="">Select Category</option>
+                    {dropdownOptions.category.map((option) => (
+                      <option key={option.id} value={option.value}>
+                        {option.label || option.value}
+                      </option>
+                    ))}
                   </select>
                   <button
                     type="button"
+                    onClick={() => handleCreateNewOption("category")}
                     className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 text-sm flex items-center gap-1 transition-colors"
                     style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}
                   >
@@ -290,13 +534,21 @@ export default function AddAssetPage() {
                     name="department"
                     value={formData.department}
                     onChange={handleChange}
-                    className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400"
+                    required
+                    disabled={loading}
+                    className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 disabled:opacity-50 disabled:cursor-not-allowed"
                     style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}
                   >
-                    <option value="Asset">Asset</option>
+                    <option value="">Select Department</option>
+                    {dropdownOptions.department.map((option) => (
+                      <option key={option.id} value={option.value}>
+                        {option.label || option.value}
+                      </option>
+                    ))}
                   </select>
                   <button
                     type="button"
+                    onClick={() => handleCreateNewOption("department")}
                     className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 text-sm flex items-center gap-1 transition-colors"
                     style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}
                   >
@@ -317,14 +569,27 @@ export default function AddAssetPage() {
               Asset Photo
             </h2>
             <div className="space-y-2">
+              <input
+                type="file"
+                id="photo-upload"
+                accept="image/jpeg,image/jpg,image/gif,image/png"
+                onChange={handleFileChange}
+                className="hidden"
+              />
               <Button
                 type="button"
+                onClick={() => document.getElementById('photo-upload')?.click()}
                 className="bg-green-500 hover:bg-green-600 text-white flex items-center gap-2"
                 style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}
               >
                 <Upload className="h-4 w-4" />
                 Choose File
               </Button>
+              {photoFile && (
+                <p className="text-sm text-gray-600 dark:text-gray-400" style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}>
+                  Selected: {photoFile.name}
+                </p>
+              )}
               <p className="text-sm text-gray-600 dark:text-gray-400" style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}>
                 Only (JPG, GIF, PNG) are allowed.
               </p>
@@ -471,15 +736,17 @@ export default function AddAssetPage() {
               variant="outline"
               className="border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
               style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}
+              onClick={() => router.back()}
             >
               Cancel
             </Button>
             <Button
               type="submit"
-              className="bg-yellow-500 hover:bg-yellow-600 text-white"
+              className="bg-yellow-500 hover:bg-yellow-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
               style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}
+              disabled={submitting || loading}
             >
-              Submit
+              {submitting ? "Submitting..." : "Submit"}
             </Button>
           </div>
         </form>
